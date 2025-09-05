@@ -1,27 +1,27 @@
 # Gradio 웹 데모 - 사용자 친화적 인터페이스
-# 가정: API 서버가 localhost:4700에서 실행 중
 import gradio as gr
-import httpx
+import requests
 import json
 from typing import Optional, Tuple
 
 API_BASE_URL = "http://localhost:4700/api/v1"
 
-async def process_document(file, company_name: Optional[str] = None) -> Tuple[str, str, str]:
+def process_document(file, company_name: Optional[str] = None) -> Tuple[str, str, str]:
     """완전 자동화 파이프라인 처리"""
     if file is None:
         return "파일을 업로드해주세요.", "", ""
     
     try:
-        # API 호출
-        files = {"file": (file.name, file, "application/octet-stream")}
-        data = {"company_name": company_name} if company_name else {}
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
+        # Gradio 파일 객체 처리
+        with open(file, "rb") as f:
+            files = {"file": (file, f, "application/octet-stream")}
+            data = {"company_name": company_name} if company_name else {}
+            
+            response = requests.post(
                 f"{API_BASE_URL}/questions/process-complete",
                 files=files,
-                data=data
+                data=data,
+                timeout=60.0
             )
         
         if response.status_code == 200:
@@ -41,7 +41,7 @@ async def process_document(file, company_name: Optional[str] = None) -> Tuple[st
                 questions_text
             )
         else:
-            return f"❌ 오류 발생: {response.status_code}", "", ""
+            return f"❌ 오류 발생: {response.status_code} - {response.text}", "", ""
             
     except Exception as e:
         return f"❌ 처리 실패: {str(e)}", "", ""

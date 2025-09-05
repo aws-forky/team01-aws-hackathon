@@ -3,6 +3,7 @@ import json
 import logging
 import asyncio
 import httpx
+import os
 from typing import Dict, List, Optional, Any
 from config import settings
 
@@ -16,6 +17,9 @@ class LLMProcessor:
             "Content-Type": "application/json"
         }
         self.last_call_time = 0.0
+        # 프롬프트 파일 절대 경로 설정
+        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.prompts_dir = os.path.join(self.base_dir, "prompts")
 
     async def _wait_rate_limit(self) -> None:
         """API 호출 간격 제어"""
@@ -145,7 +149,8 @@ class LLMProcessor:
     def _load_keyword_prompts(self) -> Dict[str, str]:
         """키워드 추출 프롬프트 로드"""
         try:
-            with open("prompts/keyword_extraction.json", "r", encoding="utf-8") as f:
+            prompt_file = os.path.join(self.prompts_dir, "keyword_extraction.json")
+            with open(prompt_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"Failed to load keyword prompts: {e}")
@@ -157,7 +162,8 @@ class LLMProcessor:
     def _load_question_prompts(self) -> Dict[str, str]:
         """질문 생성 프롬프트 로드"""
         try:
-            with open("prompts/question_generation.json", "r", encoding="utf-8") as f:
+            prompt_file = os.path.join(self.prompts_dir, "question_generation.json")
+            with open(prompt_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"Failed to load question prompts: {e}")
