@@ -1,6 +1,9 @@
 # 문서 파싱 엔드포인트 - 파일 업로드 및 텍스트 추출
 from fastapi import APIRouter, UploadFile, File, HTTPException
 import logging
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.document_parser import DocumentParser
 from models.responses import DocumentParseResponse

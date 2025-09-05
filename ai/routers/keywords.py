@@ -1,6 +1,9 @@
 # 키워드 추출 엔드포인트 - AI 기반 기술 키워드 추출
 from fastapi import APIRouter, HTTPException
 import logging
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.llm_processor import LLMProcessor
 from models.requests import KeywordExtractRequest

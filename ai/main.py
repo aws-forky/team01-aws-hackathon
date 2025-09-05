@@ -1,6 +1,11 @@
 # FastAPI 애플리케이션 진입점 - 라우터 통합 및 CORS 설정
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sys
+import os
+
+# 현재 디렉토리를 Python path에 추가
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from routers import documents, keywords, questions, health
 

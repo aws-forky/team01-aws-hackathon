@@ -4,7 +4,11 @@ import logging
 import asyncio
 import httpx
 import os
+import sys
 from typing import Dict, List, Optional, Any
+
+# 상위 디렉토리를 Python path에 추가
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import settings
 
 logger = logging.getLogger(__name__)

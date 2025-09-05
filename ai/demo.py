@@ -2,6 +2,7 @@
 import gradio as gr
 import requests
 import json
+import os
 from typing import Optional, Tuple
 
 API_BASE_URL = "http://localhost:4700/api/v1"
@@ -12,9 +13,12 @@ def process_document(file, company_name: Optional[str] = None) -> Tuple[str, str
         return "파일을 업로드해주세요.", "", ""
     
     try:
-        # Gradio 파일 객체 처리
-        with open(file, "rb") as f:
-            files = {"file": (file, f, "application/octet-stream")}
+        # Gradio 파일 객체는 이미 파일 경로를 제공함
+        file_path = file.name if hasattr(file, 'name') else file
+        
+        with open(file_path, "rb") as f:
+            # API 엔드포인트와 매개변수명 맞춤 (file -> file)
+            files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
             data = {"company_name": company_name} if company_name else {}
             
             response = requests.post(
@@ -35,13 +39,25 @@ def process_document(file, company_name: Optional[str] = None) -> Tuple[str, str
                 questions_text += f"**{q['type'].upper()}**: {q['text']}\n"
                 questions_text += f"*평가 포인트*: {q['explanation']}\n\n"
             
+            # 문서 내용 안전하게 처리
+            doc_content = result.get("document_content", "")
+            if len(doc_content) > 500:
+                doc_preview = doc_content[:500] + "..."
+            else:
+                doc_preview = doc_content
+            
             return (
                 f"✅ 처리 완료!\n키워드: {keywords_text}",
-                result.get("document_content", "")[:500] + "...",
+                doc_preview,
                 questions_text
             )
         else:
-            return f"❌ 오류 발생: {response.status_code} - {response.text}", "", ""
+            error_detail = ""
+            try:
+                error_detail = response.json().get("detail", response.text)
+            except:
+                error_detail = response.text
+            return f"❌ 오류 발생: {response.status_code} - {error_detail}", "", ""
             
     except Exception as e:
         return f"❌ 처리 실패: {str(e)}", "", ""

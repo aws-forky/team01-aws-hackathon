@@ -2,6 +2,9 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from typing import Optional
 import logging
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.document_parser import DocumentParser
 from services.llm_processor import LLMProcessor

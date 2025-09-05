@@ -1,5 +1,9 @@
 # 헬스체크 엔드포인트 - 서버 상태 확인
 from fastapi import APIRouter
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models.responses import BaseResponse
 
 router = APIRouter()
