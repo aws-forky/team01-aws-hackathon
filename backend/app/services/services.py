@@ -240,7 +240,7 @@ class AIService:
             
             # AI 서버 통신 시도
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=60) as client:
                     headers = {'Content-Type': 'application/json'}
                     payload = {'html_content': text}  # 전체 텍스트
                     
@@ -340,7 +340,7 @@ class AIService:
             
             # AI 서버 통신 시도
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=60) as client:
                     headers = {'Content-Type': 'application/json'}
                     
                     # 포트폴리오에서 키워드 추출
@@ -565,7 +565,7 @@ class FeedbackService:
             
             # AI 서버 통신 시도
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=60) as client:
                     headers = {'Content-Type': 'application/json'}
                     payload = {
                         'html_content': f'Question: {question[:500]}\n\nAnswer: {answer[:1000]}',
@@ -736,7 +736,7 @@ class FollowUpService:
             
             # AI 서버 통신 시도
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=60) as client:
                     headers = {'Content-Type': 'application/json'}
                     
                     payload = {
