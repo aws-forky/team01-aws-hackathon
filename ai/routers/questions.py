@@ -41,10 +41,10 @@ async def generate_following_question(request: FollowingQuestionRequest):
 @router.post("/questions/evaluate", response_model=QuestionEvaluateResponse)
 async def evaluate_answer(request: QuestionEvaluateRequest):
     try:
-        feedback, score = await llm_processor.evaluate_answer(
+        feedback = await llm_processor.evaluate_answer(
             request.question, 
             request.answer
         )
-        return QuestionEvaluateResponse(feedback=feedback, score=score)
+        return QuestionEvaluateResponse(feedback=feedback)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

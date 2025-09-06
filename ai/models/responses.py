@@ -23,17 +23,14 @@ class FollowingQuestionResponse(BaseModel):
     
 class QuestionEvaluateResponse(BaseModel):
     feedback: str
-    score: Optional[int] = None
     success: bool = True
     
 class AllEvaluateResponse(BaseModel):
     overall_feedback: str
-    total_score: Optional[int] = None
     success: bool = True
     
 class PortfolioEvaluateResponse(BaseModel):
     portfolio_feedback: str
-    completeness_score: Optional[int] = None
     success: bool = True
     
 class HealthResponse(BaseModel):
