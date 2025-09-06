@@ -8,9 +8,13 @@ class DocumentParseResponse(BaseModel):
 class KeywordExtractResponse(BaseModel):
     keywords: List[str]
     success: bool = True
+
+class QuestionItem(BaseModel):
+    question: str
+    tip: str
     
 class QuestionGenerateResponse(BaseModel):
-    questions: List[str]
+    questions: List[QuestionItem]
     success: bool = True
     
 class FollowingQuestionResponse(BaseModel):

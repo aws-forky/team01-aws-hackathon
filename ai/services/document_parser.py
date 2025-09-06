@@ -6,6 +6,7 @@ class DocumentParser:
     def __init__(self):
         self.api_key = config.UPSTAGE_API_KEY
         self.parse_url = config.UPSTAGE_DOCUMENT_PARSE_URL
+        self.max_file_size = 10 * 1024 * 1024  # 10MB
     
     async def parse_document(self, file_content: str) -> str:
         headers = {
@@ -13,7 +14,18 @@ class DocumentParser:
         }
         
         # Decode base64 content
-        file_data = base64.b64decode(file_content)
+        try:
+            file_data = base64.b64decode(file_content)
+        except Exception:
+            raise ValueError("Invalid base64 file content")
+        
+        # Check file size
+        if len(file_data) > self.max_file_size:
+            raise ValueError("File size exceeds 10MB limit")
+        
+        # Check PDF header
+        if not file_data.startswith(b'%PDF'):
+            raise ValueError("File is not a valid PDF")
         
         files = {
             "document": ("document.pdf", file_data, "application/pdf")

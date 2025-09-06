@@ -7,7 +7,8 @@ from models.requests import (
 from models.responses import (
     QuestionGenerateResponse, 
     FollowingQuestionResponse, 
-    QuestionEvaluateResponse
+    QuestionEvaluateResponse,
+    QuestionItem
 )
 from services.llm_processor import LLMProcessor
 
@@ -17,10 +18,11 @@ llm_processor = LLMProcessor()
 @router.post("/questions/generate", response_model=QuestionGenerateResponse)
 async def generate_questions(request: QuestionGenerateRequest):
     try:
-        questions = await llm_processor.generate_questions(
+        questions_data = await llm_processor.generate_questions(
             request.html_content, 
             request.question_count
         )
+        questions = [QuestionItem(**item) for item in questions_data]
         return QuestionGenerateResponse(questions=questions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -11,5 +11,7 @@ async def parse_document(request: DocumentParseRequest):
     try:
         html_content = await document_parser.parse_document(request.file_content)
         return DocumentParseResponse(html_content=html_content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
