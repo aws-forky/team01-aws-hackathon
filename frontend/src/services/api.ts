@@ -217,7 +217,8 @@ export const apiService = {
       companies: [
         { name: '네이버', description: '국내 최대 포털 및 IT 서비스 기업', tech_stack: ['Java', 'Spring', 'React'] },
         { name: '카카오', description: '모바일 메신저 및 플랫폼 서비스 기업', tech_stack: ['Kotlin', 'Swift', 'React'] },
-        { name: '삼성전자', description: '글로벌 전자제품 및 반도체 기업', tech_stack: ['C++', 'Python', 'Android'] }
+        { name: '삼성전자', description: '글로벌 전자제품 및 반도체 기업', tech_stack: ['C++', 'Python', 'Android'] },
+        { name: 'AWS', description: '클라우드 컴퓨팅 서비스를 제공하는 글로벌 IT 기업', tech_stack: ['Python', 'Java', 'AWS Lambda', 'DynamoDB', 'S3'] }
       ]
     }
   },

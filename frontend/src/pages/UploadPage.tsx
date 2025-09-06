@@ -28,7 +28,7 @@ export default function UploadPage() {
       const extractedText = String(uploadResult.text_content || uploadResult.html_content || uploadResult.extracted_text || '')
       
       console.log('Extracted text length:', extractedText.length)
-      console.log('First 100 chars:', extractedText.substring(0, 100))
+      console.log('Full text extracted successfully')
       
       setExtractedText(extractedText)
       
