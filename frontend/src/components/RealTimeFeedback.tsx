@@ -4,9 +4,10 @@ import { FeedbackAnalysis } from '../types';
 interface RealTimeFeedbackProps {
   feedback: FeedbackAnalysis;
   onClose?: () => void;
+  className?: string;
 }
 
-const RealTimeFeedback: React.FC<RealTimeFeedbackProps> = ({ feedback, onClose }) => {
+const RealTimeFeedback: React.FC<RealTimeFeedbackProps> = ({ feedback, onClose, className = '' }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'star' | 'technical'>('overview');
 
   const getScoreColor = (score: number) => {
@@ -26,9 +27,16 @@ const RealTimeFeedback: React.FC<RealTimeFeedbackProps> = ({ feedback, onClose }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 max-w-4xl mx-auto">
+    <div className={`bg-white rounded-lg shadow-lg p-6 max-w-4xl mx-auto ${className}`}>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">실시간 답변 피드백</h2>
+        <div className="flex items-center space-x-2">
+          <h2 className="text-2xl font-bold text-gray-800">🤖 AI 실시간 피드백</h2>
+          {(feedback as any)?.ai_generated && (
+            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+              AI 생성
+            </span>
+          )}
+        </div>
         {onClose && (
           <button
             onClick={onClose}
@@ -107,6 +115,14 @@ const RealTimeFeedback: React.FC<RealTimeFeedbackProps> = ({ feedback, onClose }
               ))}
             </ul>
           </div>
+
+          {/* AI 개인화 조언 */}
+          {(feedback as any)?.personalized_advice && (
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h3 className="text-lg font-semibold text-blue-700 mb-3">🎯 개인화된 조언</h3>
+              <p className="text-blue-900">{(feedback as any).personalized_advice}</p>
+            </div>
+          )}
         </div>
       )}
 

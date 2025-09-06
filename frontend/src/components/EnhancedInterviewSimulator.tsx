@@ -169,10 +169,17 @@ const EnhancedInterviewSimulator: React.FC<EnhancedInterviewSimulatorProps> = ({
     }
   }, [currentAnswer, isSubmitting, answerStartTime, session, currentMainQuestion, currentFollowUpQuestion])
 
-  // 꼬리 질문 생성
+  // AI 기반 개인화 꼬리 질문 생성
   const generateAndSetFollowUpQuestions = async (mainAnswer: string) => {
     try {
       if (!currentMainQuestion) return
+
+      // 로딩 상태 표시를 위한 임시 설정
+      setSession(prev => ({
+        ...prev,
+        currentStep: 'generating-followup',
+        loadingMessage: '🤖 AI가 답변을 분석하여 개인화된 심화 질문을 생성하고 있습니다...'
+      }))
 
       const followUpResponse = await questionAPI.generateFollowing(
         currentMainQuestion.id,
@@ -191,25 +198,31 @@ const EnhancedInterviewSimulator: React.FC<EnhancedInterviewSimulatorProps> = ({
           parentQuestionId: fq.parent_question_id,
           content: fq.content,
           order: fq.order,
-          basedOnAnswer: fq.based_on_answer
+          basedOnAnswer: fq.based_on_answer,
+          aiGenerated: true  // AI 생성 표시
         }))
 
         setSession(prev => ({
           ...prev,
           followUpQuestions,
           currentStep: 'followup',
-          currentFollowUpIndex: 0
+          currentFollowUpIndex: 0,
+          loadingMessage: undefined
         }))
         
         setAnswerStartTime(new Date())
+      } else {
+        throw new Error('AI 서버에서 유효한 꼬리 질문을 생성하지 못했습니다.')
       }
     } catch (error) {
-      console.error('꼬리 질문 생성 중 오류:', error)
-      // 에러 발생 시 질문 선택으로 돌아가기
+      console.error('AI 꼬리 질문 생성 중 오류:', error)
+      
+      // 사용자에게 명확한 오류 메시지 표시
       setSession(prev => ({
         ...prev,
-        currentStep: 'selection',
-        currentMainQuestionId: null
+        currentStep: 'error',
+        errorMessage: `AI 기반 심화 질문 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}. 메인 질문으로 돌아가서 다시 시도해주세요.`,
+        loadingMessage: undefined
       }))
     }
   }
@@ -263,6 +276,59 @@ const EnhancedInterviewSimulator: React.FC<EnhancedInterviewSimulatorProps> = ({
             completedQuestions={session.completedMainQuestions}
             onQuestionSelect={handleQuestionSelect}
           />
+        ) : session.currentStep === 'generating-followup' ? (
+          // AI 꼬리 질문 생성 중
+          <div className="text-center py-12">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl">🤖</span>
+                </div>
+              </div>
+              <div className="max-w-md text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">AI가 심화 질문을 생성하고 있습니다</h3>
+                <p className="text-gray-600 mb-4">{(session as any).loadingMessage || '답변 내용을 바탕으로 개인화된 꼬리 질문을 만들고 있습니다...'}</p>
+                <div className="text-sm text-blue-600">
+                  💡 잠시만 기다려주세요. AI가 최적의 심화 질문을 선별하고 있습니다.
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : session.currentStep === 'error' ? (
+          // 오류 화면
+          <div className="text-center py-12">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                <span className="text-2xl">⚠️</span>
+              </div>
+              <div className="max-w-md text-center">
+                <h3 className="text-lg font-semibold text-red-900 mb-2">AI 서비스 오류</h3>
+                <p className="text-red-700 mb-4">{(session as any).errorMessage || 'AI 기반 기능에서 오류가 발생했습니다.'}</p>
+                <div className="space-x-3">
+                  <button
+                    onClick={() => setSession(prev => ({
+                      ...prev,
+                      currentStep: 'selection',
+                      currentMainQuestionId: null,
+                      followUpQuestions: [],
+                      currentFollowUpIndex: 0,
+                      errorMessage: undefined
+                    }))}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    질문 선택으로 돌아가기
+                  </button>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                  >
+                    페이지 새로고침
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           // 질문 답변 화면
           <div className="space-y-6">
@@ -279,6 +345,11 @@ const EnhancedInterviewSimulator: React.FC<EnhancedInterviewSimulatorProps> = ({
                       }`}>
                         {currentQuestion.type === 'main' ? '메인 질문' : currentQuestion.title}
                       </span>
+                      {currentQuestion.type === 'followup' && (currentFollowUpQuestion as any)?.aiGenerated && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          🤖 AI 개인화
+                        </span>
+                      )}
                       {currentMainQuestion && (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                           {currentMainQuestion.category}
@@ -288,6 +359,11 @@ const EnhancedInterviewSimulator: React.FC<EnhancedInterviewSimulatorProps> = ({
                     <h2 className="text-xl font-semibold text-gray-900 mb-2">
                       {currentQuestion.content}
                     </h2>
+                    {currentQuestion.type === 'followup' && (currentFollowUpQuestion as any)?.aiGenerated && (
+                      <div className="text-sm text-green-700 bg-green-50 rounded-md p-2 mb-2">
+                        💡 이 질문은 AI가 당신의 답변을 분석하여 생성한 개인화된 심화 질문입니다.
+                      </div>
+                    )}
                     {currentQuestion.type === 'main' && currentMainQuestion && (
                       <p className="text-sm text-gray-600">
                         예상 답변 시간: {currentMainQuestion.estimatedTime}분 • 난이도: {currentMainQuestion.difficulty}

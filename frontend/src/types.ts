@@ -72,6 +72,8 @@ export interface FollowUpQuestionNew {
   content: string
   order: number // 1, 2, 3 순서
   basedOnAnswer?: string // 이전 답변 기반 생성된 경우
+  aiGenerated?: boolean // AI 기반 개인화 질문인지
+  reasoning?: string // AI 생성 근거
 }
 
 export interface Answer {
