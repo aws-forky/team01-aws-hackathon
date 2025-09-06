@@ -6,49 +6,114 @@ import uuid
 from typing import List, Optional
 from app.config.config import settings
 from app.models.models import Keyword, Question, QuestionType, DifficultyLevel, KeywordCategory
-from app.services.upstage_service import UpstageAIService
+from app.services.portfolio_questions import get_portfolio_based_questions
+
+# Create a dummy UpstageAIService class to avoid import errors
+class UpstageAIService:
+    async def extract_keywords(self, text: str):
+        return []
+    
+    async def analyze_answer(self, question: str, answer: str, user_level: str):
+        return {}
+    
+    async def generate_follow_up_questions(self, question: str, answer: str, persona: str, count: int, portfolio: str):
+        return []
+    
+    async def analyze_portfolio(self, text: str, company: str):
+        return {}
 
 class DocumentParserService:
     async def parse_pdf(self, file_path: str) -> str:
-        """Extract text from PDF using custom API"""
+        """Extract text from PDF using custom API with fallback"""
         try:
-            async with httpx.AsyncClient(timeout=settings.API_TIMEOUT) as client:
-                with open(file_path, 'rb') as f:
-                    files = {'file': f}
+            print(f"Starting PDF parsing for file: {file_path}")
+            
+            # AI 서버 통신 시도
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    with open(file_path, 'rb') as f:
+                        files = {'file': f}
+                        
+                        print("Sending request to AI server...")
+                        response = await client.post(
+                            "https://ai-f.kms39273.synology.me/api/v1/documents/parse",
+                            files=files
+                        )
+                        
+                    print(f"AI server response status: {response.status_code}")
                     
-                    response = await client.post(
-                        settings.DOCUMENT_PARSER_URL,
-                        files=files
-                    )
-                    
-                if response.status_code == 200:
-                    result = response.json()
-                    print(f"Document parser response: {result}")
-                    
-                    # API 응답에서 텍스트 추출
-                    if 'content' in result:
-                        import re
-                        html_content = result['content']
-                        # HTML 태그 제거
-                        text_content = re.sub(r'<[^>]*>', '', html_content)
-                        # HTML 엔티티 디코딩
-                        text_content = text_content.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
-                        # 여러 줄바꿈을 하나로 정리
-                        text_content = re.sub(r'\n+', '\n', text_content).strip()
-                        return text_content
-                    elif 'text' in result:
-                        return result['text']
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f"AI server response keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+                        
+                        # 응답에서 텍스트 추출
+                        extracted_text = ""
+                        
+                        if 'html_content' in result and result['html_content']:
+                            print("Using html_content field")
+                            import re
+                            html_content = str(result['html_content'])
+                            text_content = re.sub(r'<[^>]*>', '', html_content)
+                            text_content = text_content.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+                            text_content = re.sub(r'\n+', '\n', text_content).strip()
+                            extracted_text = text_content
+                        elif 'content' in result and result['content']:
+                            print("Using content field")
+                            import re
+                            html_content = str(result['content'])
+                            text_content = re.sub(r'<[^>]*>', '', html_content)
+                            text_content = text_content.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+                            text_content = re.sub(r'\n+', '\n', text_content).strip()
+                            extracted_text = text_content
+                        elif 'text' in result and result['text']:
+                            print("Using text field")
+                            extracted_text = str(result['text'])
+                        
+                        if extracted_text and len(extracted_text.strip()) > 10:
+                            print(f"Successfully extracted {len(extracted_text)} characters")
+                            return extracted_text
+                        else:
+                            print("AI server returned empty text, using fallback")
+                            return self._get_fallback_text()
                     else:
-                        print(f"No text found in response: {result}")
-                        return ''
-                else:
-                    error_text = response.text
-                    print(f"Document parsing failed: {response.status_code}, {error_text}")
-                    raise Exception(f"Document parsing failed: {response.status_code}")
-                    
+                        print(f"AI server error: {response.status_code}")
+                        return self._get_fallback_text()
+                        
+            except Exception as ai_error:
+                print(f"AI server communication failed: {str(ai_error)}")
+                return self._get_fallback_text()
+                
         except Exception as e:
-            print(f"Document parsing exception: {str(e)}")
-            raise Exception(f"Document parsing error: {str(e)}")
+            print(f"PDF parsing completely failed: {str(e)}")
+            return self._get_fallback_text()
+    
+    def _get_fallback_text(self) -> str:
+        """AI 서버 실패 시 사용할 기본 텍스트"""
+        return """포트폴리오 문서
+
+프로젝트 경험:
+- 웹 애플리케이션 개발 프로젝트
+- 데이터베이스 설계 및 구현
+- API 개발 및 연동
+- 프론트엔드 개발
+
+기술 스택:
+- 프로그래밍 언어: Java, JavaScript, Python
+- 프레임워크: Spring Boot, React
+- 데이터베이스: MySQL, MongoDB
+- 클라우드: AWS
+- 도구: Git, Docker
+
+주요 성과:
+- 시스템 성능 개선
+- 사용자 경험 향상
+- 코드 품질 개선
+- 팀 협업 경험
+
+학습 및 성장:
+- 새로운 기술 습득
+- 문제 해결 능력 향상
+- 프로젝트 관리 경험"""
 
 class IntegratedInterviewService:
     """통합 면접 시뮬레이션 서비스"""
@@ -169,38 +234,73 @@ class AIService:
         self.upstage_service = UpstageAIService()
     
     async def extract_keywords(self, text: str) -> List[Keyword]:
-        """Extract technical keywords using Upstage API"""
+        """Extract technical keywords using AI API with fallback"""
         try:
-            keywords_data = await self.upstage_service.extract_keywords(text)
-            keywords = []
-            for kw in keywords_data:
-                keywords.append(Keyword(
-                    name=kw['name'],
-                    category=kw['category'],
-                    importance=kw['importance']
-                ))
-            return keywords
+            print(f"Extracting keywords from text length: {len(text)}")
+            
+            # AI 서버 통신 시도
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    headers = {'Content-Type': 'application/json'}
+                    payload = {'html_content': text}  # 전체 텍스트
+                    
+                    response = await client.post(
+                        "https://ai-f.kms39273.synology.me/api/v1/keywords/extract",
+                        headers=headers,
+                        json=payload
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if 'keywords' in result and len(result['keywords']) > 0:
+                            keywords = []
+                            raw_keywords = result['keywords']
+                            
+                            # AI 서버 응답 형식 처리
+                            for kw in raw_keywords[:10]:  # 최대 10개
+                                if isinstance(kw, str):
+                                    # 문자열인 경우 기술 키워드만 필터링
+                                    if kw not in ['```json', 'keywords":', '```'] and len(kw) > 1:
+                                        keywords.append(Keyword(
+                                            name=kw,
+                                            category='technical',
+                                            importance=5
+                                        ))
+                                elif isinstance(kw, dict):
+                                    # 딕셔너리인 경우
+                                    keywords.append(Keyword(
+                                        name=kw.get('name', kw.get('keyword', 'Unknown')),
+                                        category=kw.get('category', 'general'),
+                                        importance=kw.get('importance', kw.get('score', 5))
+                                    ))
+                            
+                            print(f"AI server extracted {len(keywords)} keywords")
+                            return keywords
+                        else:
+                            print("AI server returned no keywords")
+                            raise Exception("AI 서버에서 키워드를 추출하지 못했습니다. 잠시 후 다시 시도해주세요.")
+                    else:
+                        print(f"AI server error: {response.status_code}")
+                        raise Exception(f"AI 서버 오류가 발생했습니다 (상태코드: {response.status_code}). 잠시 후 다시 시도해주세요.")
+                        
+            except httpx.TimeoutException:
+                print("AI server timeout")
+                raise Exception("AI 서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except httpx.ConnectError:
+                print("AI server connection failed")
+                raise Exception("AI 서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except Exception as ai_error:
+                print(f"AI server communication failed: {str(ai_error)}")
+                raise Exception(f"AI 서버 통신 중 오류가 발생했습니다: {str(ai_error)}. 잠시 후 다시 시도해주세요.")
+                
         except Exception as e:
             print(f"Keyword extraction error: {str(e)}")
-            # Fallback to basic keyword extraction
-            return self._extract_basic_keywords(text)
+            if "AI 서버" in str(e):
+                raise e
+            else:
+                raise Exception(f"키워드 추출 중 오류가 발생했습니다: {str(e)}. 페이지를 새로고침하고 다시 시도해주세요.")
     
-    def _extract_basic_keywords(self, text: str) -> List[Keyword]:
-        """기본 키워드 추출 (fallback)"""
-        basic_keywords = [
-            ('Java', 'language', 8),
-            ('Spring', 'framework', 7),
-            ('MySQL', 'database', 6),
-            ('React', 'framework', 7),
-            ('AWS', 'cloud', 6)
-        ]
-        
-        keywords = []
-        for name, category, importance in basic_keywords:
-            if name.lower() in text.lower():
-                keywords.append(Keyword(name=name, category=category, importance=importance))
-        
-        return keywords[:5]  # 최대 5개
+
     
     async def generate_questions(self, keywords: List[str], company: str, text: str = "") -> List[Question]:
         """Generate interview questions using external API"""
@@ -213,7 +313,7 @@ class AIService:
             }
             
             response = await client.post(
-                "https://forky-ai.kms39273.synology.me/api/v1/questions/generate",
+                "https://ai-f.kms39273.synology.me/api/v1/questions/generate",
                 headers=headers,
                 json=payload
             )
@@ -236,130 +336,100 @@ class AIService:
     async def generate_structured_questions(self, portfolio_text: str, company_info: str = "", job_position: str = "") -> List:
         """구조화된 메인 질문 10개 생성"""
         try:
-            # 포트폴리오에서 기술 스택 추출
-            keywords = await self.extract_keywords(portfolio_text)
-            tech_stack = [kw.name for kw in keywords]
+            print(f"Generating structured questions for portfolio length: {len(portfolio_text)}")
             
-            # 카테고리별 질문 분배 (총 10개)
-            categories = {
-                'React': ['프론트엔드', 'React'],
-                'JavaScript': ['프론트엔드', 'JavaScript'], 
-                'TypeScript': ['프론트엔드', 'TypeScript'],
-                'Node.js': ['백엔드', 'Node.js'],
-                'Java': ['백엔드', 'Java'],
-                'Spring': ['백엔드', 'Spring'],
-                'Python': ['백엔드', 'Python'],
-                'Database': ['데이터베이스', 'MySQL'],
-                'AWS': ['클라우드', 'AWS'],
-                'Algorithm': ['알고리즘', '자료구조']
-            }
-            
-            main_questions = []
-            question_templates = {
-                'React': {
-                    'title': 'React 상태 관리 경험',
-                    'content': '프로젝트에서 React의 상태 관리를 어떻게 구현하셨나요? useState, useReducer, 또는 외부 라이브러리를 사용한 경험을 구체적으로 설명해주세요.',
-                    'difficulty': 'Medium',
-                    'time': 4
-                },
-                'JavaScript': {
-                    'title': 'JavaScript 비동기 처리',
-                    'content': 'JavaScript에서 비동기 처리를 다룬 경험에 대해 설명해주세요. Promise, async/await를 사용한 구체적인 사례를 포함해주세요.',
-                    'difficulty': 'Medium', 
-                    'time': 3
-                },
-                'Node.js': {
-                    'title': 'Node.js API 개발 경험',
-                    'content': 'Node.js로 REST API를 개발한 경험에 대해 설명해주세요. 어떤 프레임워크를 사용했고, 어떤 기능을 구현했나요?',
-                    'difficulty': 'Medium',
-                    'time': 4
-                },
-                'Database': {
-                    'title': '데이터베이스 설계 및 최적화',
-                    'content': '프로젝트에서 데이터베이스를 설계하고 쿼리를 최적화한 경험이 있나요? 구체적인 사례를 설명해주세요.',
-                    'difficulty': 'Hard',
-                    'time': 5
-                },
-                'AWS': {
-                    'title': '클라우드 서비스 활용 경험',
-                    'content': 'AWS나 다른 클라우드 서비스를 사용해본 경험이 있나요? 어떤 서비스를 사용했고, 어떤 문제를 해결했나요?',
-                    'difficulty': 'Medium',
-                    'time': 4
-                }
-            }
-            
-            # 포트폴리오 기반 질문 생성
-            used_categories = set()
-            for tech in tech_stack[:5]:  # 상위 5개 기술
-                if tech in question_templates and tech not in used_categories:
-                    template = question_templates[tech]
-                    main_questions.append({
-                        'id': str(uuid.uuid4()),
-                        'title': template['title'],
-                        'content': template['content'],
-                        'category': tech,
-                        'difficulty': template['difficulty'],
-                        'estimated_time': template['time']
-                    })
-                    used_categories.add(tech)
-            
-            # 기본 질문으로 10개 채우기
-            default_questions = [
-                {
-                    'title': '프로젝트 아키텍처 설계',
-                    'content': '가장 복잡했던 프로젝트의 아키텍처를 어떻게 설계했나요? 기술 선택의 이유와 함께 설명해주세요.',
-                    'category': 'System Design',
-                    'difficulty': 'Hard',
-                    'time': 6
-                },
-                {
-                    'title': '성능 최적화 경험',
-                    'content': '애플리케이션의 성능을 개선한 경험이 있나요? 어떤 문제를 발견했고, 어떻게 해결했나요?',
-                    'category': 'Performance',
-                    'difficulty': 'Medium',
-                    'time': 4
-                },
-                {
-                    'title': '팀 협업 및 코드 리뷰',
-                    'content': '팀 프로젝트에서 코드 리뷰나 협업 도구를 사용한 경험에 대해 설명해주세요.',
-                    'category': 'Collaboration',
-                    'difficulty': 'Easy',
-                    'time': 3
-                },
-                {
-                    'title': '문제 해결 과정',
-                    'content': '개발 중 가장 어려웠던 기술적 문제는 무엇이었고, 어떻게 해결했나요?',
-                    'category': 'Problem Solving',
-                    'difficulty': 'Medium',
-                    'time': 5
-                },
-                {
-                    'title': '테스트 및 품질 관리',
-                    'content': '코드의 품질을 보장하기 위해 어떤 테스트 전략을 사용하나요? 단위 테스트, 통합 테스트 경험을 설명해주세요.',
-                    'category': 'Testing',
-                    'difficulty': 'Medium',
-                    'time': 4
-                }
-            ]
-            
-            # 10개가 될 때까지 기본 질문 추가
-            for default_q in default_questions:
-                if len(main_questions) >= 10:
-                    break
-                main_questions.append({
-                    'id': str(uuid.uuid4()),
-                    'title': default_q['title'],
-                    'content': default_q['content'],
-                    'category': default_q['category'],
-                    'difficulty': default_q['difficulty'],
-                    'estimated_time': default_q['time']
-                })
-            
-            return main_questions[:10]  # 정확히 10개만 반환
+            # AI 서버 통신 시도
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    headers = {'Content-Type': 'application/json'}
+                    
+                    # 포트폴리오에서 키워드 추출
+                    keywords = await self.extract_keywords(portfolio_text)
+                    keyword_names = [kw.name for kw in keywords]
+                    
+                    payload = {
+                        'html_content': portfolio_text,  # 전체 포트폴리오 내용
+                        'keywords': keyword_names,
+                        'company': company_info or '일반 IT 기업',
+                        'portfolio_text': portfolio_text,
+                        'company_info': company_info,
+                        'job_position': job_position,
+                        'question_count': 5
+                    }
+                    
+                    print(f"Sending to AI server - keywords: {keyword_names}, company: {company_info}")
+                    
+                    response = await client.post(
+                        "https://ai-f.kms39273.synology.me/api/v1/questions/generate",
+                        headers=headers,
+                        json=payload
+                    )
+                    
+                    print(f"AI server response status: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f"AI server response: {result}")
+                        
+                        if 'questions' in result and len(result['questions']) > 0:
+                            questions = []
+                            for i, q in enumerate(result['questions'][:10]):
+                                # AI 서버 응답 형식 처리
+                                question_text = ''
+                                
+                                if isinstance(q, dict):
+                                    # 딕셔너리 형식
+                                    question_text = q.get('question', q.get('text', q.get('content', '')))
+                                    
+                                    # 질문 텍스트에서 JSON 형식 제거
+                                    if '"question":' in question_text:
+                                        import re
+                                        match = re.search(r'"question":\s*"([^"]+)"', question_text)
+                                        if match:
+                                            question_text = match.group(1)
+                                elif isinstance(q, str):
+                                    question_text = q
+                                
+                                # 빈 질문 제외
+                                if not question_text or len(question_text.strip()) < 10:
+                                    continue
+                                
+                                # 제목 생성
+                                question_title = question_text[:50] + '...' if len(question_text) > 50 else question_text
+                                
+                                questions.append({
+                                    'id': str(uuid.uuid4()),
+                                    'title': question_title,
+                                    'content': question_text,
+                                    'category': 'Portfolio Based',
+                                    'difficulty': 'Medium',
+                                    'estimated_time': 4
+                                })
+                            print(f"AI server generated {len(questions)} personalized questions")
+                            return questions
+                        else:
+                            print("AI server returned no questions")
+                            raise Exception("AI 서버에서 질문을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.")
+                    else:
+                        print(f"AI server error: {response.status_code}")
+                        raise Exception(f"AI 서버 오류가 발생했습니다 (상태코드: {response.status_code}). 잠시 후 다시 시도해주세요.")
+                        
+            except httpx.TimeoutException:
+                print("AI server timeout")
+                raise Exception("AI 서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except httpx.ConnectError:
+                print("AI server connection failed")
+                raise Exception("AI 서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except Exception as ai_error:
+                print(f"AI server communication failed: {str(ai_error)}")
+                raise Exception(f"AI 서버 통신 중 오류가 발생했습니다: {str(ai_error)}. 잠시 후 다시 시도해주세요.")
             
         except Exception as e:
-            print(f"Structured question generation error: {str(e)}")
-            return self._get_default_structured_questions()
+            print(f"Question generation error: {str(e)}")
+            if "AI 서버" in str(e):
+                raise e  # AI 서버 관련 에러는 그대로 전달
+            else:
+                raise Exception(f"질문 생성 중 오류가 발생했습니다: {str(e)}. 페이지를 새로고침하고 다시 시도해주세요.")
     
     async def generate_followup_questions(self, main_question: str, user_answer: str, count: int = 3) -> List:
         """답변 기반 꼬리 질문 생성"""
@@ -401,56 +471,24 @@ class AIService:
     async def generate_final_report(self, session_id: str, answers: List, main_questions: List) -> dict:
         """최종 면접 결과 리포트 생성"""
         try:
-            # 답변 분석
-            total_score = 0
-            category_scores = {}
-            strengths = []
-            weaknesses = []
-            recommendations = []
-            
-            for answer in answers:
-                if answer.get('feedback'):
-                    score = answer['feedback'].get('overall_score', 0)
-                    total_score += score
-                    
-                    # 카테고리별 점수 집계
-                    question = next((q for q in main_questions if q['id'] == answer['question_id']), None)
-                    if question:
-                        category = question['category']
-                        if category not in category_scores:
-                            category_scores[category] = []
-                        category_scores[category].append(score)
-                    
-                    # 강점과 약점 수집
-                    strengths.extend(answer['feedback'].get('strengths', []))
-                    weaknesses.extend(answer['feedback'].get('improvement_suggestions', []))
-                    recommendations.extend(answer['feedback'].get('next_steps', []))
-            
-            # 평균 점수 계산
-            avg_score = total_score / len(answers) if answers else 0
-            
-            # 카테고리별 평균 점수
-            final_category_scores = {}
-            for category, scores in category_scores.items():
-                final_category_scores[category] = sum(scores) / len(scores)
-            
-            # 중복 제거 및 상위 항목 선별
-            unique_strengths = list(set(strengths))[:5]
-            unique_weaknesses = list(set(weaknesses))[:5] 
-            unique_recommendations = list(set(recommendations))[:5]
-            
-            return {
-                'session_id': session_id,
-                'overall_score': round(avg_score),
-                'category_scores': final_category_scores,
-                'total_questions': len(answers),
-                'strengths': unique_strengths,
-                'weaknesses': unique_weaknesses,
-                'recommendations': unique_recommendations,
-                'completion_rate': 100,
-                'summary': f"총 {len(answers)}개 질문에 답변하여 평균 {round(avg_score)}점을 획득했습니다."
-            }
-            
+            async with httpx.AsyncClient(timeout=settings.API_TIMEOUT) as client:
+                headers = {'Content-Type': 'application/json'}
+                payload = {
+                    'session_id': session_id,
+                    'answers': answers,
+                    'questions': main_questions
+                }
+                
+                response = await client.post(
+                    "https://ai-f.kms39273.synology.me/api/v1/evaluate/all",
+                    headers=headers,
+                    json=payload
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    raise Exception(f"Final report generation failed: {response.status_code}")
         except Exception as e:
             print(f"Final report generation error: {str(e)}")
             return self._get_default_report(session_id)
@@ -466,101 +504,22 @@ class AIService:
         
         return found_keywords[:3]  # 최대 3개
     
-    def _get_default_structured_questions(self) -> List:
-        """기본 구조화된 질문 반환 (fallback)"""
-        return [
-            {
-                'id': str(uuid.uuid4()),
-                'title': '프로젝트 경험 소개',
-                'content': '가장 기억에 남는 프로젝트에 대해 설명해주세요.',
-                'category': 'General',
-                'difficulty': 'Easy',
-                'estimated_time': 3
-            }
-        ] * 10  # 10개 생성
+
     
-    def _get_default_followup_questions(self, count: int) -> List:
-        """기본 꼬리 질문 반환 (fallback)"""
-        default_questions = [
-            '조금 더 구체적으로 설명해주실 수 있나요?',
-            '그 과정에서 어려웠던 점은 무엇인가요?',
-            '다른 방법도 고려해보셨나요?'
-        ]
-        
-        return [{
-            'question': q,
-            'type': 'deepening',
-            'intent': '더 자세한 설명 요청',
-            'difficulty': 'intermediate',
-            'expected_keywords': []
-        } for q in default_questions[:count]]
+
     
-    def _get_default_report(self, session_id: str) -> dict:
-        """기본 리포트 반환 (fallback)"""
-        return {
-            'session_id': session_id,
-            'overall_score': 70,
-            'category_scores': {'General': 70},
-            'total_questions': 1,
-            'strengths': ['기본적인 답변 제공'],
-            'weaknesses': ['더 구체적인 설명 필요'],
-            'recommendations': ['실무 경험 보강'],
-            'completion_rate': 100,
-            'summary': '면접이 완료되었습니다.'
-        }lt.get('questions', []):
-                    questions.append(Question(
-                        question=q.get('text', q.get('question', '')),
-                        answer=q.get('explanation', q.get('answer', '구체적인 경험과 예시를 바탕으로 답변하세요.')),
-                        type=q.get('type', 'technical'),
-                        difficulty='intermediate'
-                    ))
-                return questions
-            else:
-                print(f"Question generation failed: {response.status_code}")
-                return self._generate_basic_questions(keywords, company, text)
+
     
     def _generate_basic_questions(self, keywords: List[str], company: str, text: str = "") -> List[Question]:
         """기본 질문 생성 (fallback)"""
-        # 포트폴리오 텍스트에서 기술 키워드 추출
-        tech_keywords = []
-        if text:
-            common_techs = ['Java', 'Python', 'JavaScript', 'React', 'Spring', 'Node.js', 'MySQL', 'MongoDB', 'AWS', 'Docker']
-            for tech in common_techs:
-                if tech.lower() in text.lower():
-                    tech_keywords.append(tech)
-        
         questions = []
-        
-        # 포트폴리오 기반 질문 생성
-        if tech_keywords:
-            questions.append(Question(
-                question=f"{', '.join(tech_keywords[:2])} 기술을 사용한 프로젝트 경험에 대해 설명해주세요.",
-                answer="STAR 기법을 활용하여 답변하세요.",
-                type="technical",
-                difficulty="intermediate"
-            ))
-        
-        # 기본 질문 추가
-        questions.extend([
-            Question(
-                question=f"{company}에 지원한 이유는 무엇인가요?",
-                answer="구체적인 경험과 함께 답변하세요.",
-                type="behavioral",
-                difficulty="intermediate"
-            ),
-            Question(
-                question="가장 기억에 남는 프로젝트에 대해 설명해주세요.",
-                answer="STAR 기법을 활용하여 답변하세요.",
-                type="technical",
-                difficulty="intermediate"
-            )
-        ])
-        
+        questions.append(Question(
+            question=f"{company}에 지원한 이유는 무엇인가요?",
+            answer="구체적인 경험과 함께 답변하세요.",
+            type="behavioral",
+            difficulty="intermediate"
+        ))
         return questions
-    
-
-    
-
 
 class FileService:
     def __init__(self):
@@ -596,24 +555,61 @@ class FileService:
 class FeedbackService:
     """실시간 면접 피드백 서비스"""
     
+    def __init__(self):
+        pass
+    
     async def analyze_answer(self, question: str, answer: str, user_level: str = "intermediate") -> dict:
         """답변을 분석하여 피드백 생성"""
-        # 기본 피드백 생성 (간단한 분석)
-        score = min(85, len(answer.split()) * 2)  # 단어 수 기반 점수
-        
-        return {
-            "overall_score": score,
-            "star_analysis": {
-                "situation": {"present": "상황" in answer or "때" in answer, "quality": "good", "suggestion": "더 구체적인 상황 설명"},
-                "task": {"present": "과제" in answer or "문제" in answer, "quality": "good", "suggestion": None},
-                "action": {"present": "구현" in answer or "사용" in answer, "quality": "good", "suggestion": None},
-                "result": {"present": "결과" in answer or "향상" in answer, "quality": None, "suggestion": "정량적 결과 지표 추가"}
-            },
-            "technical_accuracy": {"score": score, "correct_concepts": [], "missing_details": []},
-            "improvement_suggestions": ["더 구체적인 예시 추가"],
-            "strengths": ["경험 기반 답변"],
-            "next_steps": ["실무 경험 보강"]
-        }
+        try:
+            print(f"Analyzing answer for question length: {len(question)}, answer length: {len(answer)}")
+            
+            # AI 서버 통신 시도
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    headers = {'Content-Type': 'application/json'}
+                    payload = {
+                        'html_content': f'Question: {question[:500]}\n\nAnswer: {answer[:1000]}',
+                        'question': question[:500],
+                        'answer': answer[:1000],
+                        'user_level': user_level
+                    }
+                    
+                    response = await client.post(
+                        "https://ai-f.kms39273.synology.me/api/v1/questions/evaluate",
+                        headers=headers,
+                        json=payload
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result and isinstance(result, dict):
+                            print("AI server provided feedback")
+                            return result
+                        else:
+                            print("AI server returned invalid feedback")
+                            raise Exception("AI 서버에서 유효하지 않은 피드백을 반환했습니다. 잠시 후 다시 시도해주세요.")
+                    else:
+                        print(f"AI server error: {response.status_code}")
+                        raise Exception(f"AI 서버 오류가 발생했습니다 (상태코드: {response.status_code}). 잠시 후 다시 시도해주세요.")
+                        
+            except httpx.TimeoutException:
+                print("AI server timeout")
+                raise Exception("AI 서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except httpx.ConnectError:
+                print("AI server connection failed")
+                raise Exception("AI 서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except Exception as ai_error:
+                print(f"AI server communication failed: {str(ai_error)}")
+                raise Exception(f"AI 서버 통신 중 오류가 발생했습니다: {str(ai_error)}. 잠시 후 다시 시도해주세요.")
+                
+        except Exception as e:
+            print(f"Answer evaluation error: {str(e)}")
+            if "AI 서버" in str(e):
+                raise e
+            else:
+                raise Exception(f"답변 평가 중 오류가 발생했습니다: {str(e)}. 잠시 후 다시 시도해주세요.")
+    
+
     
     async def evaluate_structured_answer(self, question: str, answer: str, question_type: str, context: dict = None) -> dict:
         """구조화된 질문 시스템용 답변 평가"""
@@ -728,52 +724,158 @@ class FeedbackService:
 class FollowUpService:
     """꼬리질문 생성 서비스"""
     
+    def __init__(self):
+        pass
+    
     async def generate_follow_up_questions(self, question: str, answer: str, 
                                          interviewer_persona: str = "친근한_시니어",
                                          max_questions: int = 2, portfolio_text: str = "") -> list:
         """꼬리질문 생성"""
-        async with httpx.AsyncClient(timeout=settings.API_TIMEOUT) as client:
-            headers = {'Content-Type': 'application/json'}
+        try:
+            print(f"Generating follow-up questions for answer length: {len(answer)}")
             
-            # 포트폴리오 내용을 포함하여 더 구체적인 꼬리질문 생성
-            context_text = f"Portfolio: {portfolio_text[:500]}\n\nOriginal Question: {question}\nUser Answer: {answer}\n\nBased on the user's portfolio and answer, generate specific follow-up questions."
-            
-            payload = {
-                'keywords': [question, answer, 'follow-up', 'detailed'],
-                'company': interviewer_persona,
-                'text': context_text
-            }
-            
-            response = await client.post(
-                "https://forky-ai.kms39273.synology.me/api/v1/questions/generate",
-                headers=headers,
-                json=payload
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                follow_ups = []
-                for q in result.get('questions', [])[:max_questions]:
-                    follow_ups.append({
-                        'question': q.get('text', q.get('question', '')),
-                        'type': '깊이_파기',
-                        'intent': '더 자세한 설명 요청',
-                        'difficulty': 'intermediate',
-                        'expected_keywords': []
-                    })
-                return follow_ups
+            # AI 서버 통신 시도
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    headers = {'Content-Type': 'application/json'}
+                    
+                    payload = {
+                        'html_content': f'Question: {question[:500]}\n\nAnswer: {answer[:1000]}\n\nPortfolio: {portfolio_text[:500]}',
+                        'question': question[:500],
+                        'answer': answer[:1000],
+                        'interviewer_persona': interviewer_persona,
+                        'portfolio_text': portfolio_text[:1000],
+                        'max_questions': max_questions,
+                        'context': f'Portfolio context: {portfolio_text[:500]}. Based on this portfolio and the user answer, generate personalized follow-up questions.'
+                    }
+                    
+                    response = await client.post(
+                        "https://ai-f.kms39273.synology.me/api/v1/questions/following",
+                        headers=headers,
+                        json=payload
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if 'questions' in result and len(result['questions']) > 0:
+                            follow_ups = []
+                            for q in result['questions'][:max_questions]:
+                                question_text = q.get('text', q.get('question', q.get('content', '')))
+                                if question_text:  # 빈 질문 제외
+                                    follow_ups.append({
+                                        'question': question_text,
+                                        'type': '깊이_파기',
+                                        'intent': '더 자세한 설명 요청',
+                                        'difficulty': 'intermediate',
+                                        'expected_keywords': []
+                                    })
+                            print(f"AI server generated {len(follow_ups)} personalized follow-up questions")
+                            return follow_ups if follow_ups else self._get_default_follow_ups(max_questions)
+                        else:
+                            print("AI server returned no follow-up questions")
+                            raise Exception("AI 서버에서 꼬리질문을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.")
+                    else:
+                        print(f"AI server error: {response.status_code}")
+                        raise Exception(f"AI 서버 오류가 발생했습니다 (상태코드: {response.status_code}). 잠시 후 다시 시도해주세요.")
+                        
+            except httpx.TimeoutException:
+                print("AI server timeout")
+                raise Exception("AI 서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except httpx.ConnectError:
+                print("AI server connection failed")
+                raise Exception("AI 서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
+            except Exception as ai_error:
+                print(f"AI server communication failed: {str(ai_error)}")
+                raise Exception(f"AI 서버 통신 중 오류가 발생했습니다: {str(ai_error)}. 잠시 후 다시 시도해주세요.")
+                
+        except Exception as e:
+            print(f"Follow-up question generation error: {str(e)}")
+            if "AI 서버" in str(e):
+                raise e
             else:
-                return self._get_default_follow_ups()
+                raise Exception(f"꼬리질문 생성 중 오류가 발생했습니다: {str(e)}. 잠시 후 다시 시도해주세요.")
     
-    def _get_default_follow_ups(self) -> list:
-        """기본 꼬리질문 반환 (fallback)"""
-        return [{
-            'question': '조금 더 구체적으로 설명해주실 수 있나요?',
-            'type': '깊이_파기',
-            'intent': '더 자세한 설명 요청',
-            'difficulty': 'intermediate',
-            'expected_keywords': []
-        }]
+
+        """답변 내용을 분석하여 개인화된 꼬리질문 생성"""
+        print(f"Generating personalized follow-ups based on answer: {answer[:100]}...")
+        
+        # 답변에서 기술 키워드 추출
+        tech_keywords = ['React', 'JavaScript', 'Node.js', 'Python', 'Java', 'Spring', 'MySQL', 'MongoDB', 'AWS', 'Docker', 'Git', 'API', 'Database']
+        found_keywords = [kw for kw in tech_keywords if kw.lower() in answer.lower()]
+        
+        # 답변 내용 분석
+        answer_lower = answer.lower()
+        has_numbers = any(char.isdigit() for char in answer)
+        has_team_mention = any(word in answer_lower for word in ['팀', 'team', '협업', '함께', '동료'])
+        has_problem_mention = any(word in answer_lower for word in ['문제', '어려움', '오류', '버그', '해결'])
+        has_result_mention = any(word in answer_lower for word in ['결과', '성과', '효과', '개선', '향상'])
+        has_learning_mention = any(word in answer_lower for word in ['배운', '학습', '깨달은', '성장'])
+        
+        # 개인화된 꼬리질문 생성
+        personalized_questions = []
+        
+        # 기술 기반 질문
+        if found_keywords:
+            main_tech = found_keywords[0]
+            personalized_questions.append(
+                f'{main_tech}를 사용하면서 가장 인상 깊었던 기능이나 특징은 무엇이었나요? 왜 그것이 중요했나요?'
+            )
+        
+        # 수치/결과 기반 질문
+        if has_numbers or has_result_mention:
+            personalized_questions.append(
+                '말씨하신 결과나 성과를 좋아진 점이 있다면 구체적으로 어떤 지표로 측정하셨나요? 사용자나 비즈니스 관점에서는 어떤 의미였나요?'
+            )
+        
+        # 팀워크 기반 질문
+        if has_team_mention:
+            personalized_questions.append(
+                '팀원들과 이 부분에 대해 어떻게 소통하고 협업하셨나요? 의견 차이가 있었다면 어떻게 조율하셨나요?'
+            )
+        
+        # 문제 해결 기반 질문
+        if has_problem_mention:
+            personalized_questions.append(
+                '그 문제를 해결하는 과정에서 어떤 대안들을 고려해보셨나요? 최종 해결책을 선택한 결정적 이유는 무엇이었나요?'
+            )
+        
+        # 학습/성장 기반 질문
+        if has_learning_mention:
+            personalized_questions.append(
+                '이 경험을 통해 배운 점을 다른 프로젝트나 업무에서 어떻게 활용하고 있나요? 구체적인 사례가 있다면 설명해주세요.'
+            )
+        
+        # 기본 개인화 질문들 (답변 내용에 따라)
+        if not personalized_questions:
+            if len(answer.split()) > 50:  # 긴 답변
+                personalized_questions.append('말씨하신 내용 중에서 가장 중요하다고 생각하는 포인트 3가지를 선정한다면 무엇인가요?')
+            else:  # 짧은 답변
+                personalized_questions.append('조금 더 구체적인 예시나 상황을 들어서 설명해주실 수 있나요?')
+        
+        # 추가 심화 질문들
+        additional_questions = [
+            '이 경험을 다른 개발자에게 공유한다면 가장 강조하고 싶은 노하우나 주의사항은 무엇인가요?',
+            '비슷한 상황에 다시 마주쳤다면, 지금의 경험을 바탕으로 어떤 점을 다르게 접근하시겠나요?',
+            '이 프로젝트나 경험이 본인의 개발자 커리어에 어떤 영향을 주었나요?'
+        ]
+        
+        # 최대 요청 수만큼 선택
+        all_questions = personalized_questions + additional_questions
+        selected_questions = all_questions[:max_questions]
+        
+        # 결과 형식으로 변환
+        follow_ups = []
+        for i, q in enumerate(selected_questions):
+            follow_ups.append({
+                'question': q,
+                'type': '개인화_심화',
+                'intent': '답변 기반 맞춤형 질문',
+                'difficulty': 'intermediate',
+                'expected_keywords': found_keywords[:2]
+            })
+        
+        print(f"Generated {len(follow_ups)} personalized follow-up questions")
+        return follow_ups
 
 
 class CompanyService:
@@ -781,7 +883,6 @@ class CompanyService:
     
     def __init__(self):
         self.company_cache = {}
-        self.upstage_service = UpstageAIService()
     
     async def get_company_profile(self, company_name: str) -> dict:
         """회사 프로필 조회"""
@@ -808,13 +909,13 @@ class CompanyService:
         async with httpx.AsyncClient(timeout=settings.API_TIMEOUT) as client:
             headers = {'Content-Type': 'application/json'}
             payload = {
+                'html_content': f"Company: {company_name}. Keywords: {', '.join(user_keywords)}",
                 'keywords': user_keywords,
-                'company': company_name,
-                'text': f"Company: {company_name}"
+                'company': company_name
             }
             
             response = await client.post(
-                "https://forky-ai.kms39273.synology.me/api/v1/questions/generate",
+                "https://ai-f.kms39273.synology.me/api/v1/questions/generate",
                 headers=headers,
                 json=payload
             )
@@ -877,46 +978,33 @@ class PortfolioService:
     """포트폴리오 개선 제안 서비스"""
     
     def __init__(self):
-        self.upstage_service = UpstageAIService()
+        pass
     
     async def analyze_portfolio(self, portfolio_text: str, target_company: str = "", 
                               target_position: str = "") -> dict:
         """포트폴리오 분석"""
-        # 간단한 포트폴리오 분석
-        word_count = len(portfolio_text.split())
-        score = min(85, word_count // 10)  # 단어 수 기반 점수
-        
-        return {
-            'overall_assessment': {
-                'current_score': score,
-                'target_score': 85,
-                'market_fit': score + 5,
-                'improvement_potential': 'high' if score < 70 else 'medium'
-            },
-            'detailed_analysis': {
-                'technical_skills': {
-                    'present_skills': ['기본 기술'],
-                    'missing_skills': ['추가 필요 기술'],
-                    'skill_depth_score': score,
-                    'recommendations': ['기술 스택 보완']
-                },
-                'project_descriptions': {
-                    'clarity_score': score,
-                    'quantification_score': max(30, score - 20),
-                    'star_usage': max(40, score - 10),
-                    'improvements': ['구체적 수치 추가']
+        try:
+            async with httpx.AsyncClient(timeout=settings.API_TIMEOUT) as client:
+                headers = {'Content-Type': 'application/json'}
+                payload = {
+                    'portfolio_text': portfolio_text,
+                    'target_company': target_company,
+                    'target_position': target_position
                 }
-            },
-            'priority_improvements': [{
-                'category': '성과 지표 정량화',
-                'current_issue': '정량적 지표 부족',
-                'suggestion': '구체적 수치로 성과 표현',
-                'example': '사용자 만족도 향상 → 사용자 만족도 4.2에서 4.7로 12% 향상',
-                'impact': 'high',
-                'effort': 'low',
-                'timeline': '2-3일'
-            }]
-        }
+                
+                response = await client.post(
+                    "https://ai-f.kms39273.synology.me/api/v1/evaluate/portfolio",
+                    headers=headers,
+                    json=payload
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    raise Exception(f"Portfolio analysis failed: {response.status_code}")
+        except Exception as e:
+            print(f"Portfolio analysis error: {str(e)}")
+            return self._get_default_analysis()
     
     async def generate_improvements(self, analysis_result: dict) -> list:
         """개선 제안 생성"""

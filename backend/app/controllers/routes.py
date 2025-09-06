@@ -20,7 +20,7 @@ followup_service = FollowUpService()
 company_service = CompanyService()
 portfolio_service = PortfolioService()
 
-@router.get("/api/v1/health")
+@router.get("/api/v2/health")
 async def system_health_check():
     """시스템 상태 확인"""
     try:
@@ -53,7 +53,7 @@ async def system_health_check():
             "message": "System health check failed"
         }
 
-@router.post("/api/v1/documents/parse")
+@router.post("/api/v2/documents/parse")
 async def parse_document(file: UploadFile = File(...)):
     """PDF → HTML 변환"""
     try:
@@ -72,11 +72,13 @@ async def parse_document(file: UploadFile = File(...)):
                 "success": True,
                 "document_id": file_id,
                 "html_content": extracted_text,
-                "text_content": extracted_text,  # HTML 태그 제거된 순수 텍스트
+                "text_content": extracted_text,
+                "extracted_text": extracted_text,  # 호환성을 위해 추가
                 "message": "Document parsed successfully"
             }
         
         except Exception as e:
+            print(f"Document parsing error in route: {str(e)}")
             return {
                 "success": False,
                 "document_id": file_id,
@@ -90,7 +92,7 @@ async def parse_document(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/v1/keywords/extract")
+@router.post("/api/v2/keywords/extract")
 async def extract_keywords(request: Request):
     """키워드 추출"""
     body = await request.json()
@@ -124,7 +126,7 @@ async def extract_keywords(request: Request):
             "message": "Keyword extraction failed"
         }
 
-@router.post("/api/v1/questions/generate")
+@router.post("/api/v2/questions/generate")
 async def generate_main_questions(request: Request):
     """메인 질문 생성"""
     body = await request.json()
@@ -406,7 +408,7 @@ async def optimize_portfolio_for_company(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/v1/evaluate/portfolio")
+@router.post("/api/v2/evaluate/portfolio")
 async def evaluate_portfolio_completeness(request: Request):
     """포트폴리오 완성도 평가"""
     body = await request.json()
@@ -507,7 +509,7 @@ async def generate_structured_questions_legacy(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/api/v1/questions/following")
+@router.post("/api/v2/questions/following")
 async def generate_following_questions(request: Request):
     """꼬리질문 생성"""
     body = await request.json()
@@ -553,7 +555,7 @@ async def generate_following_questions(request: Request):
             "message": "Following question generation failed"
         }
 
-@router.post("/api/v1/questions/evaluate")
+@router.post("/api/v2/questions/evaluate")
 async def evaluate_single_answer(request: Request):
     """답변 평가 및 피드백"""
     body = await request.json()
@@ -604,7 +606,7 @@ async def evaluate_single_answer(request: Request):
             "message": "Answer evaluation failed"
         }
 
-@router.post("/api/v1/evaluate/all")
+@router.post("/api/v2/evaluate/all")
 async def evaluate_complete_interview(request: Request):
     """전체 면접 결과 평가"""
     body = await request.json()
