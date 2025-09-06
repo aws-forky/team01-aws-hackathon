@@ -22,7 +22,7 @@ export default function InterviewPage() {
     generateStructuredQuestions()
   }, [])
 
-  const generateStructuredQuestions = async () => {
+  const generateStructuredQuestions = async (retryCount = 0) => {
     if (!state.extractedText) {
       setError('포트폴리오 텍스트가 없습니다. 업로드 페이지로 돌아가주세요.')
       setIsLoading(false)
@@ -33,14 +33,18 @@ export default function InterviewPage() {
       setIsLoading(true)
       setError(null)
       
+      console.log(`Starting question generation... (attempt ${retryCount + 1})`)
+      
       const response = await questionAPI.generateMain(
         state.extractedText,
         state.selectedCompany,
         '백엔드 개발자',
-        10
+        5
       )
 
-      if (response.success && response.questions) {
+      console.log('Question generation response received:', response)
+
+      if (response && response.success && response.questions && response.questions.length > 0) {
         const questions: MainQuestion[] = response.questions.map((q: any) => ({
           id: q.id,
           title: q.title,
@@ -51,13 +55,24 @@ export default function InterviewPage() {
           isCompleted: false
         }))
         
+        console.log(`Successfully generated ${questions.length} questions`)
         setMainQuestions(questions)
       } else {
-        throw new Error(response.message || '질문 생성에 실패했습니다')
+        throw new Error(response?.message || '질문 생성에 실패했습니다')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('구조화된 질문 생성 실패:', error)
-      setError('질문 생성 중 오류가 발생했습니다. 다시 시도해주세요.')
+      
+      // 재시도 로직 (3번까지)
+      if (retryCount < 2 && (error.message.includes('시간이 초과') || error.message.includes('네트워크'))) {
+        console.log(`Retrying question generation in 2 seconds... (${retryCount + 1}/3)`)
+        setTimeout(() => {
+          generateStructuredQuestions(retryCount + 1)
+        }, 2000)
+        return
+      }
+      
+      setError(`질문 생성 중 오류가 발생했습니다: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -72,7 +87,7 @@ export default function InterviewPage() {
     setInterviewCompleted(false)
     setCompletedSession(null)
     setMainQuestions([])
-    generateStructuredQuestions()
+    generateStructuredQuestions(0)
   }
 
   // 로딩 상태
@@ -98,7 +113,7 @@ export default function InterviewPage() {
             <p className="text-red-700 mb-4">{error}</p>
             <div className="space-x-4">
               <button
-                onClick={generateStructuredQuestions}
+                onClick={() => generateStructuredQuestions(0)}
                 className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
               >
                 다시 시도
