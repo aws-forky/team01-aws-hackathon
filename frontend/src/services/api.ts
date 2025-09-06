@@ -7,8 +7,8 @@ import {
 } from '../types'
 
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1`,
-  timeout: 30000,
+  baseURL: `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}`,
+  timeout: 60000, // 60초로 증가
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
@@ -40,13 +40,25 @@ export const apiService = {
   // 문서 처리 API
   // =============================================================================
   async parseDocument(file: File): Promise<any> {
-    const formData = new FormData()
-    formData.append('file', file)
-    
-    const response = await api.post('/documents/parse', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    return response.data
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const response = await api.post('/api/v2/documents/parse', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000  // 60초 타임아웃
+      })
+      
+      if (response.data.success) {
+        return response.data
+      } else {
+        throw new Error(response.data.message || 'PDF 처리에 실패했습니다.')
+      }
+    } catch (error: any) {
+      console.error('PDF parsing error:', error)
+      // 에러를 그대로 전달하여 사용자가 재시도할 수 있도록 함
+      throw new Error(error.response?.data?.message || error.message || 'PDF 처리 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }
   },
 
   // 레거시 지원
@@ -58,28 +70,88 @@ export const apiService = {
   // 키워드 추출 API
   // =============================================================================
   async extractKeywords(text: string, documentId?: string): Promise<any> {
-    const response = await api.post('/keywords/extract', { 
-      text, 
-      document_id: documentId || '' 
-    })
-    return response.data
+    try {
+      const response = await api.post('/api/v2/keywords/extract', { 
+        text, 
+        document_id: documentId || '' 
+      })
+      
+      if (response.data.success) {
+        return response.data
+      } else {
+        throw new Error(response.data.message || '키워드 추출에 실패했습니다.')
+      }
+    } catch (error: any) {
+      console.error('Keyword extraction error:', error)
+      
+      // 네트워크 오류 처리
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        throw new Error('네트워크 연결 오류가 발생했습니다. 인터넷 연결을 확인해주세요.')
+      }
+      
+      // 서버 오류 처리
+      if (error.response?.status >= 500) {
+        throw new Error('서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      }
+      
+      // 기타 오류
+      throw new Error(error.response?.data?.message || error.message || '키워드 추출 중 오류가 발생했습니다. 다시 시도해주세요.')
+    }
   },
 
   // =============================================================================
   // 질문 생성 API
   // =============================================================================
-  async generateMainQuestions(portfolioText: string, companyInfo: string = '', jobPosition: string = '백엔드 개발자', questionCount: number = 10): Promise<any> {
-    const response = await api.post('/questions/generate', {
-      portfolio_text: portfolioText,
-      company_info: companyInfo,
-      job_position: jobPosition,
-      question_count: questionCount
-    })
-    return response.data
+  async generateMainQuestions(portfolioText: string, companyInfo: string = '', jobPosition: string = '백엔드 개발자', questionCount: number = 5): Promise<any> {
+    try {
+      console.log('Generating questions with:', { portfolioTextLength: portfolioText.length, companyInfo, jobPosition })
+      
+      const response = await api.post('/api/v2/questions/generate', {
+        portfolio_text: portfolioText,
+        company_info: companyInfo,
+        job_position: jobPosition,
+        question_count: questionCount
+      })
+      
+      console.log('Question generation response:', response.data)
+      
+      if (response.data && response.data.success) {
+        return response.data
+      } else {
+        const errorMsg = response.data?.message || response.data?.error || '질문 생성에 실패했습니다.'
+        throw new Error(errorMsg)
+      }
+    } catch (error: any) {
+      console.error('Question generation error:', error)
+      
+      // 응답이 있지만 에러인 경우
+      if (error.response) {
+        const status = error.response.status
+        const data = error.response.data
+        
+        if (status >= 500) {
+          throw new Error('서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+        } else if (status >= 400) {
+          throw new Error(data?.message || data?.error || '요청 처리 중 오류가 발생했습니다.')
+        }
+      }
+      
+      // 네트워크 에러
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        throw new Error('서비스 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.')
+      }
+      
+      if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        throw new Error('서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.')
+      }
+      
+      // 기타 에러
+      throw new Error(error.message || '질문 생성 중 예상치 못한 오류가 발생했습니다.')
+    }
   },
 
   async generateFollowingQuestions(mainQuestionId: string, mainQuestionContent: string, userAnswer: string, context: any = {}, followupCount: number = 3): Promise<any> {
-    const response = await api.post('/questions/following', {
+    const response = await api.post('/api/v2/questions/following', {
       main_question_id: mainQuestionId,
       main_question_content: mainQuestionContent,
       user_answer: userAnswer,
@@ -98,7 +170,7 @@ export const apiService = {
   // 평가 API
   // =============================================================================
   async evaluateAnswer(questionId: string, questionContent: string, answerContent: string, questionType: string = 'main', answerMethod: string = 'text', context: any = {}): Promise<any> {
-    const response = await api.post('/questions/evaluate', {
+    const response = await api.post('/api/v2/questions/evaluate', {
       question_id: questionId,
       question_content: questionContent,
       answer_content: answerContent,
@@ -110,7 +182,7 @@ export const apiService = {
   },
 
   async evaluateCompleteInterview(sessionId: string, interviewData: any, answers: any[], questions: any[], sessionInfo: any = {}): Promise<any> {
-    const response = await api.post('/evaluate/all', {
+    const response = await api.post('/api/v2/evaluate/all', {
       session_id: sessionId,
       interview_data: interviewData,
       answers,
@@ -121,7 +193,7 @@ export const apiService = {
   },
 
   async evaluatePortfolio(portfolioText: string, targetCompany: string = '', targetPosition: string = '', evaluationCriteria: string[] = []): Promise<any> {
-    const response = await api.post('/evaluate/portfolio', {
+    const response = await api.post('/api/v2/evaluate/portfolio', {
       portfolio_text: portfolioText,
       target_company: targetCompany,
       target_position: targetPosition,
@@ -134,7 +206,7 @@ export const apiService = {
   // 시스템 API
   // =============================================================================
   async checkSystemHealth(): Promise<any> {
-    const response = await api.get('/health')
+    const response = await api.get('/api/v2/health')
     return response.data
   },
 
