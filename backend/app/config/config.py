@@ -12,17 +12,17 @@ class Settings:
     UPSTAGE_BASE_URL: str = os.getenv("UPSTAGE_BASE_URL", "https://api.upstage.ai")
     UPSTAGE_MODEL: str = os.getenv("UPSTAGE_MODEL", "solar-pro2")
     
-    # Legacy API Settings (fallback)
-    API_BASE_URL: str = "https://forky-ai.kms39273.synology.me"
-    DOCUMENT_PARSER_URL: str = f"{API_BASE_URL}/api/v1/documents/parse"
-    KEYWORD_EXTRACT_URL: str = f"{API_BASE_URL}/api/v1/keywords/extract"
-    QUESTION_GENERATE_URL: str = f"{API_BASE_URL}/api/v1/questions/generate"
+    # AI Server Settings (External AI Service)
+    AI_SERVER_URL: str = "https://ai-f.kms39273.synology.me"
     
-    # 새로운 기능 API URLs
-    FEEDBACK_ANALYZE_URL: str = f"{API_BASE_URL}/api/v1/feedback/analyze"
-    FOLLOW_UP_GENERATE_URL: str = f"{API_BASE_URL}/api/v1/follow-up/generate"
-    COMPANY_PROFILE_URL: str = f"{API_BASE_URL}/api/v1/companies"
-    PORTFOLIO_ANALYZE_URL: str = f"{API_BASE_URL}/api/v1/portfolio/analyze"
+    # AI API Endpoints
+    DOCUMENT_PARSER_URL: str = f"{AI_SERVER_URL}/api/v1/documents/parse"
+    KEYWORD_EXTRACT_URL: str = f"{AI_SERVER_URL}/api/v1/keywords/extract"
+    QUESTION_GENERATE_URL: str = f"{AI_SERVER_URL}/api/v1/questions/generate"
+    QUESTION_FOLLOWING_URL: str = f"{AI_SERVER_URL}/api/v1/questions/following"
+    QUESTION_EVALUATE_URL: str = f"{AI_SERVER_URL}/api/v1/questions/evaluate"
+    EVALUATE_ALL_URL: str = f"{AI_SERVER_URL}/api/v1/evaluate/all"
+    EVALUATE_PORTFOLIO_URL: str = f"{AI_SERVER_URL}/api/v1/evaluate/portfolio"
     
     API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "30"))
     MAX_PORTFOLIO_LENGTH: int = int(os.getenv("MAX_PORTFOLIO_LENGTH", "2000"))
