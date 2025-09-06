@@ -1,17 +1,10 @@
-# FastAPI 애플리케이션 진입점 - 라우터 통합 및 CORS 설정
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import sys
-import os
-
-# 현재 디렉토리를 Python path에 추가
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from routers import documents, keywords, questions, health
+from routers import documents, keywords, questions, evaluate, health
 
 app = FastAPI(
-    title="AI Document Processing API",
-    description="API for document parsing and AI-based keyword/question generation",
+    title="AI Interview System API",
+    description="포트폴리오 기반 AI 면접 시스템",
     version="1.0.0"
 )
 
@@ -23,11 +16,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router, prefix="/api/v1", tags=["health"])
-app.include_router(documents.router, prefix="/api/v1", tags=["documents"])
-app.include_router(keywords.router, prefix="/api/v1", tags=["keywords"])
-app.include_router(questions.router, prefix="/api/v1", tags=["questions"])
+app.include_router(documents.router, prefix="/api/v1")
+app.include_router(keywords.router, prefix="/api/v1")
+app.include_router(questions.router, prefix="/api/v1")
+app.include_router(evaluate.router, prefix="/api/v1")
+app.include_router(health.router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=4700)

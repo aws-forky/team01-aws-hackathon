@@ -1,94 +1,37 @@
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional
 
-
-class BaseResponse(BaseModel):
-    success: bool
-    message: str
-
-
-class DocumentParseResponse(BaseResponse):
-    content: Optional[str] = None
-
-
-class KeywordResponse(BaseModel):
-    tech: str
-    category: str
-    reason: str
-
-
-class KeywordExtractResponse(BaseResponse):
-    keywords: Optional[List[str]] = None
-    detailed_keywords: Optional[List[KeywordResponse]] = None
-    is_fallback: bool = False
-    fallback_reason: Optional[str] = None
-
-
-class QuestionResponse(BaseModel):
-    id: str
-    type: str
-    text: str
-    explanation: str
-
-
-class QuestionGenerateResponse(BaseResponse):
-    questions: Optional[List[QuestionResponse]] = None
-    is_fallback: bool = False
-    fallback_reason: Optional[str] = None
-
-
-class ProcessCompleteResponse(BaseResponse):
-    document_content: Optional[str] = None
-    keywords: Optional[List[str]] = None
-    detailed_keywords: Optional[List[KeywordResponse]] = None
-    questions: Optional[List[QuestionResponse]] = None
-    keyword_fallback: bool = False
-    question_fallback: bool = False
-    fallback_reasons: Optional[List[str]] = None
-from pydantic import BaseModel
-from typing import List, Optional, Any
-
-
-class BaseResponse(BaseModel):
-    success: bool
-    message: str
-
-
-class DocumentParseResponse(BaseResponse):
-    content: Optional[str] = None
-
-
-class KeywordResponse(BaseModel):
-    tech: str
-    category: str
-    reason: str
-
-
-class KeywordExtractResponse(BaseResponse):
-    keywords: Optional[List[str]] = None
-    detailed_keywords: Optional[List[KeywordResponse]] = None
-    is_fallback: bool = False
-    fallback_reason: Optional[str] = None
-
-
-class QuestionResponse(BaseModel):
-    id: str
-    type: str
-    text: str
-    explanation: str
-
-
-class QuestionGenerateResponse(BaseResponse):
-    questions: Optional[List[QuestionResponse]] = None
-    is_fallback: bool = False
-    fallback_reason: Optional[str] = None
-
-
-class ProcessCompleteResponse(BaseResponse):
-    document_content: Optional[str] = None
-    keywords: Optional[List[str]] = None
-    detailed_keywords: Optional[List[KeywordResponse]] = None
-    questions: Optional[List[QuestionResponse]] = None
-    keyword_fallback: bool = False
-    question_fallback: bool = False
-    fallback_reasons: Optional[List[str]] = None
+class DocumentParseResponse(BaseModel):
+    html_content: str
+    success: bool = True
+    
+class KeywordExtractResponse(BaseModel):
+    keywords: List[str]
+    success: bool = True
+    
+class QuestionGenerateResponse(BaseModel):
+    questions: List[str]
+    success: bool = True
+    
+class FollowingQuestionResponse(BaseModel):
+    following_question: str
+    success: bool = True
+    
+class QuestionEvaluateResponse(BaseModel):
+    feedback: str
+    score: Optional[int] = None
+    success: bool = True
+    
+class AllEvaluateResponse(BaseModel):
+    overall_feedback: str
+    total_score: Optional[int] = None
+    success: bool = True
+    
+class PortfolioEvaluateResponse(BaseModel):
+    portfolio_feedback: str
+    completeness_score: Optional[int] = None
+    success: bool = True
+    
+class HealthResponse(BaseModel):
+    status: str = "healthy"
+    timestamp: str

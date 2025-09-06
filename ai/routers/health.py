@@ -1,14 +1,12 @@
-# 헬스체크 엔드포인트 - 서버 상태 확인
 from fastapi import APIRouter
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from models.responses import BaseResponse
+from models.responses import HealthResponse
+from datetime import datetime
 
 router = APIRouter()
 
-@router.get("/health", response_model=BaseResponse)
+@router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
-    return BaseResponse(success=True, message="API is running")
+    return HealthResponse(
+        status="healthy",
+        timestamp=datetime.now().isoformat()
+    )
