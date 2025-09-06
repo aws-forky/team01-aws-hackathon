@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { VoiceRecognitionState, SpeechRecognitionResult } from '../types'
+import React, { useEffect, useCallback } from 'react'
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 
 interface VoiceRecorderProps {
   onTranscript: (text: string) => void
@@ -9,28 +9,6 @@ interface VoiceRecorderProps {
   language?: string
 }
 
-// Web Speech API 타입 확장
-declare global {
-  interface Window {
-    SpeechRecognition: typeof SpeechRecognition
-    webkitSpeechRecognition: typeof SpeechRecognition
-  }
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start(): void
-  stop(): void
-  abort(): void
-}
-
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList
-  resultIndex: number
-}
-
 const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   onTranscript,
   onError,
@@ -38,193 +16,69 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   className = '',
   language = 'ko-KR'
 }) => {
-  const [voiceState, setVoiceState] = useState<VoiceRecognitionState>({
-    isSupported: false,
-    isListening: false,
-    transcript: '',
-    confidence: 0,
-    error: null
+  const {
+    isSupported,
+    isListening,
+    transcript,
+    confidence,
+    error,
+    startListening,
+    stopListening,
+    resetTranscript
+  } = useSpeechRecognition({
+    language,
+    continuous: false,
+    interimResults: true,
+    maxRetries: 2
   })
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  // 브라우저 호환성 체크
-  const checkBrowserSupport = useCallback((): boolean => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    return !!SpeechRecognition
-  }, [])
-
-  // 음성 인식 초기화
-  const initializeSpeechRecognition = useCallback(() => {
-    if (!checkBrowserSupport()) {
-      setVoiceState(prev => ({
-        ...prev,
-        isSupported: false,
-        error: '이 브라우저는 음성 인식을 지원하지 않습니다. Chrome, Edge, Safari를 사용해주세요.'
-      }))
-      return null
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    const recognition = new SpeechRecognition()
-
-    // 음성 인식 설정
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = language
-
-    // 이벤트 핸들러 설정
-    recognition.onstart = () => {
-      setVoiceState(prev => ({
-        ...prev,
-        isListening: true,
-        error: null
-      }))
-    }
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let finalTranscript = ''
-      let interimTranscript = ''
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        const transcript = result[0].transcript
-
-        if (result.isFinal) {
-          finalTranscript += transcript
-          setVoiceState(prev => ({
-            ...prev,
-            confidence: result[0].confidence,
-            transcript: finalTranscript
-          }))
-        } else {
-          interimTranscript += transcript
-        }
-      }
-
-      // 최종 결과가 있으면 부모 컴포넌트에 전달
-      if (finalTranscript) {
-        onTranscript(finalTranscript.trim())
-      }
-    }
-
-    recognition.onerror = (event: any) => {
-      let errorMessage = '음성 인식 중 오류가 발생했습니다.'
-      
-      switch (event.error) {
-        case 'no-speech':
-          errorMessage = '음성이 감지되지 않았습니다. 다시 시도해주세요.'
-          break
-        case 'audio-capture':
-          errorMessage = '마이크에 접근할 수 없습니다. 마이크 권한을 확인해주세요.'
-          break
-        case 'not-allowed':
-          errorMessage = '마이크 사용 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해주세요.'
-          break
-        case 'network':
-          errorMessage = '네트워크 오류로 음성 인식에 실패했습니다.'
-          break
-        case 'service-not-allowed':
-          errorMessage = '음성 인식 서비스를 사용할 수 없습니다.'
-          break
-      }
-
-      setVoiceState(prev => ({
-        ...prev,
-        isListening: false,
-        error: errorMessage
-      }))
-
-      if (onError) {
-        onError(errorMessage)
-      }
-    }
-
-    recognition.onend = () => {
-      setVoiceState(prev => ({
-        ...prev,
-        isListening: false
-      }))
-
-      // 자동 재시작 (활성 상태이고 에러가 없는 경우)
-      if (isActive && !voiceState.error) {
-        setTimeout(() => {
-          if (recognitionRef.current && isActive) {
-            try {
-              recognitionRef.current.start()
-            } catch (error) {
-              console.warn('음성 인식 재시작 실패:', error)
-            }
-          }
-        }, 100)
-      }
-    }
-
-    return recognition
-  }, [language, onTranscript, onError, isActive, voiceState.error])
-
-  // 음성 인식 시작
-  const startListening = useCallback(() => {
-    if (!recognitionRef.current) {
-      recognitionRef.current = initializeSpeechRecognition()
-    }
-
-    if (recognitionRef.current && !voiceState.isListening) {
-      try {
-        recognitionRef.current.start()
-      } catch (error) {
-        console.error('음성 인식 시작 실패:', error)
-        setVoiceState(prev => ({
-          ...prev,
-          error: '음성 인식을 시작할 수 없습니다.'
-        }))
-      }
-    }
-  }, [initializeSpeechRecognition, voiceState.isListening])
-
-  // 음성 인식 중지
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current && voiceState.isListening) {
-      recognitionRef.current.stop()
-    }
-  }, [voiceState.isListening])
-
-  // 컴포넌트 초기화
+  // 트랜스크립트 변화 감지하여 부모에게 전달
   useEffect(() => {
-    setVoiceState(prev => ({
-      ...prev,
-      isSupported: checkBrowserSupport()
-    }))
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort()
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
+    if (transcript) {
+      onTranscript(transcript)
+      resetTranscript() // 전달 후 리셋
     }
-  }, [checkBrowserSupport])
+  }, [transcript, onTranscript, resetTranscript])
 
-  // isActive 상태 변화에 따른 음성 인식 제어
+  // 에러 발생 시 부모에게 전달
   useEffect(() => {
-    if (isActive && voiceState.isSupported && !voiceState.error) {
+    if (error && onError) {
+      onError(error)
+    }
+  }, [error, onError])
+
+  // isActive 상태에 따른 음성 인식 제어
+  useEffect(() => {
+    if (isActive && isSupported) {
       startListening()
     } else {
       stopListening()
     }
-  }, [isActive, voiceState.isSupported, voiceState.error, startListening, stopListening])
+  }, [isActive, isSupported, startListening, stopListening])
+
+  // 수동 제어 함수
+  const handleToggle = useCallback(() => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening()
+    }
+  }, [isListening, startListening, stopListening])
 
   // 브라우저 지원하지 않는 경우
-  if (!voiceState.isSupported) {
+  if (!isSupported) {
     return (
       <div className={`voice-recorder-error ${className}`}>
-        <div className="flex items-center space-x-2 text-red-600">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex flex-col items-center space-y-2 text-red-600 p-4 bg-red-50 rounded-lg border border-red-200">
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-sm">음성 인식이 지원되지 않는 브라우저입니다</span>
+          <div className="text-center">
+            <div className="text-sm font-medium">음성 인식이 지원되지 않는 브라우저입니다</div>
+            <div className="text-xs text-red-500 mt-1">
+              Chrome, Edge, Safari 등의 최신 브라우저를 사용해주세요.
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -236,19 +90,19 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         {/* 마이크 버튼 */}
         <button
           type="button"
-          onClick={isActive ? stopListening : startListening}
-          disabled={!!voiceState.error}
+          onClick={handleToggle}
+          disabled={!!error}
           className={`
             relative p-3 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2
-            ${voiceState.isListening 
+            ${isListening 
               ? 'bg-red-500 text-white focus:ring-red-500 animate-pulse' 
               : 'bg-blue-500 text-white hover:bg-blue-600 focus:ring-blue-500'
             }
-            ${voiceState.error ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            ${error ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
           `}
-          title={voiceState.isListening ? '음성 인식 중지' : '음성 인식 시작'}
+          title={isListening ? '음성 인식 중지' : '음성 인식 시작'}
         >
-          {voiceState.isListening ? (
+          {isListening ? (
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
@@ -260,26 +114,26 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
           )}
           
           {/* 녹음 중 애니메이션 */}
-          {voiceState.isListening && (
+          {isListening && (
             <div className="absolute inset-0 rounded-full border-2 border-white animate-ping"></div>
           )}
         </button>
 
         {/* 상태 표시 */}
         <div className="flex flex-col">
-          <span className={`text-sm font-medium ${voiceState.isListening ? 'text-red-600' : 'text-gray-600'}`}>
-            {voiceState.isListening ? '음성 인식 중...' : '음성 입력 대기'}
+          <span className={`text-sm font-medium ${isListening ? 'text-red-600' : 'text-gray-600'}`}>
+            {isListening ? '음성 인식 중...' : '음성 입력 대기'}
           </span>
           
-          {voiceState.confidence > 0 && (
+          {confidence > 0 && (
             <span className="text-xs text-gray-500">
-              정확도: {Math.round(voiceState.confidence * 100)}%
+              정확도: {Math.round(confidence * 100)}%
             </span>
           )}
         </div>
 
         {/* 음성 파형 시각화 (간단한 애니메이션) */}
-        {voiceState.isListening && (
+        {isListening && (
           <div className="flex items-center space-x-1">
             {[...Array(5)].map((_, i) => (
               <div
@@ -297,21 +151,58 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       </div>
 
       {/* 에러 메시지 */}
-      {voiceState.error && (
-        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-          <div className="flex items-center space-x-2 text-red-700">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start space-x-2">
+            <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-sm">{voiceState.error}</span>
+            <div className="flex-1">
+              <div className="text-sm text-red-700 font-medium mb-1">음성 인식 오류</div>
+              <div className="text-sm text-red-600 mb-2">{error}</div>
+              
+              {/* 해결 방법 안내 */}
+              <div className="text-xs text-red-500 space-y-1">
+                {error.includes('권한') && (
+                  <div>• 브라우저 주소창 왼쪽의 마이크 아이콘을 클릭하여 권한을 허용해주세요</div>
+                )}
+                {error.includes('HTTPS') && (
+                  <div>• 보안 연결(HTTPS)이 필요합니다</div>
+                )}
+                {error.includes('마이크') && (
+                  <div>• 마이크가 제대로 연결되어 있는지 확인해주세요</div>
+                )}
+                <div>• 텍스트 입력으로 대체할 수 있습니다</div>
+              </div>
+              
+              <div className="flex space-x-2 mt-2">
+                <button
+                  onClick={startListening}
+                  className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
+                >
+                  다시 시도
+                </button>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200 transition-colors"
+                >
+                  페이지 새로고침
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* 사용법 안내 */}
-      {!voiceState.isListening && !voiceState.error && (
-        <div className="mt-2 text-xs text-gray-500">
-          마이크 버튼을 클릭하여 음성으로 답변하세요
+      {!isListening && !error && (
+        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="text-xs text-blue-700 space-y-1">
+            <div className="font-medium">🎤 음성 입력 안내</div>
+            <div>• 마이크 버튼을 클릭하고 또박또박 말씨해주세요</div>
+            <div>• 음성 인식이 완료되면 자동으로 텍스트로 변환됩니다</div>
+            <div>• 처음 사용 시 마이크 권한 허용이 필요합니다</div>
+          </div>
         </div>
       )}
     </div>

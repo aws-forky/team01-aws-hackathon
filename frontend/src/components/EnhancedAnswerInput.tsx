@@ -63,9 +63,14 @@ const EnhancedAnswerInput: React.FC<EnhancedAnswerInputProps> = ({
   // 음성 인식 에러 처리
   const handleVoiceError = (error: string) => {
     console.error('음성 인식 오류:', error)
-    // 에러 발생 시 텍스트 모드로 복귀
-    setInputMode('text')
+    
+    // 에러 발생 시 음성 모드 비활성화
     setIsVoiceActive(false)
+    
+    // 심각한 에러인 경우에만 텍스트 모드로 전환
+    if (error.includes('권한') || error.includes('지원하지 않') || error.includes('사용할 수 없')) {
+      setInputMode('text')
+    }
   }
 
   // 모드 전환
@@ -77,6 +82,14 @@ const EnhancedAnswerInput: React.FC<EnhancedAnswerInputProps> = ({
       setInputMode('text')
       setIsVoiceActive(false)
     }
+  }
+  
+  // 음성 모드 재시작
+  const restartVoiceMode = () => {
+    setIsVoiceActive(false)
+    setTimeout(() => {
+      setIsVoiceActive(true)
+    }, 100)
   }
 
   // 키보드 이벤트 처리
@@ -135,6 +148,18 @@ const EnhancedAnswerInput: React.FC<EnhancedAnswerInputProps> = ({
               </svg>
               <span>음성</span>
             </button>
+            
+            {/* 음성 모드 재시작 버튼 */}
+            {inputMode === 'voice' && (
+              <button
+                type="button"
+                onClick={restartVoiceMode}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                title="음성 인식 재시작"
+              >
+                ↻
+              </button>
+            )}
           </div>
         </div>
 
@@ -192,6 +217,7 @@ const EnhancedAnswerInput: React.FC<EnhancedAnswerInputProps> = ({
               onError={handleVoiceError}
               isActive={isVoiceActive}
               className="mb-4"
+              key={isVoiceActive ? 'active' : 'inactive'}  // 재시작 시 컴포넌트 리마운트
             />
             
             {/* 음성 입력 안내 */}
