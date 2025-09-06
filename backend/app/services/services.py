@@ -432,41 +432,95 @@ class AIService:
                 raise Exception(f"질문 생성 중 오류가 발생했습니다: {str(e)}. 페이지를 새로고침하고 다시 시도해주세요.")
     
     async def generate_followup_questions(self, main_question: str, user_answer: str, count: int = 3) -> List:
-        """답변 기반 꼬리 질문 생성"""
+        """AI 기반 개인화 꼬리 질문 생성 - 3개의 개별 AI 요청"""
         try:
-            # 답변 분석하여 꼬리 질문 생성
-            followup_templates = [
-                "방금 말씀하신 {keyword}에 대해 좀 더 구체적으로 설명해주실 수 있나요?",
-                "그 과정에서 어려웠던 점이나 예상치 못한 문제가 있었나요?",
-                "다시 구현한다면 어떤 부분을 다르게 하시겠나요?",
-                "그 기술을 선택한 특별한 이유가 있나요?",
-                "성능이나 확장성 측면에서 고려한 점이 있나요?"
-            ]
-            
-            # 답변에서 키워드 추출
-            keywords = self._extract_keywords_from_answer(user_answer)
+            print(f"Generating {count} personalized follow-up questions for answer length: {len(user_answer)}")
             
             followup_questions = []
-            for i in range(min(count, len(followup_templates))):
-                template = followup_templates[i]
-                if keywords and '{keyword}' in template:
-                    question = template.format(keyword=keywords[0])
-                else:
-                    question = template.replace('{keyword}', '해당 기술')
+            
+            # AI 서버에 3번의 개별 요청을 보내서 각각 다른 꼬리 질문 생성
+            async with httpx.AsyncClient(timeout=60) as client:
+                headers = {'Content-Type': 'application/json'}
                 
-                followup_questions.append({
-                    'question': question,
-                    'type': 'deepening',
-                    'intent': '더 자세한 설명 요청',
-                    'difficulty': 'intermediate',
-                    'expected_keywords': keywords[:3]
-                })
+                for i in range(count):
+                    # 각 요청마다 약간 다른 컨텍스트 제공
+                    context_variations = [
+                        "첫 번째 심화 질문을 생성해주세요.",
+                        "두 번째 다른 관점의 심화 질문을 생성해주세요.", 
+                        "세 번째 추가적인 심화 질문을 생성해주세요."
+                    ]
+                    
+                    payload = {
+                        'question': main_question[:500],
+                        'answer': user_answer[:1000],
+                        'context': context_variations[i],
+                        'variation_index': i + 1,
+                        'user_level': 'intermediate'
+                    }
+                    
+                    response = await client.post(
+                        "https://ai-f.kms39273.synology.me/api/v1/questions/following",
+                        headers=headers,
+                        json=payload
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f"AI server response {i+1}: {result}")
+                        
+                        # AI 서버 응답 파싱
+                        if isinstance(result, dict) and 'following_question' in result:
+                            question_content = result['following_question']
+                            
+                            # JSON 래핑 해제
+                            if isinstance(question_content, str) and '```json' in question_content:
+                                try:
+                                    clean_content = question_content.strip()
+                                    if clean_content.startswith('```json'):
+                                        clean_content = clean_content[7:]
+                                    if clean_content.endswith('```'):
+                                        clean_content = clean_content[:-3]
+                                    
+                                    import json
+                                    parsed_json = json.loads(clean_content.strip())
+                                    final_question = parsed_json['following_question']
+                                except (json.JSONDecodeError, KeyError) as e:
+                                    raise Exception(f"AI 서버 응답 {i+1}의 JSON 파싱 실패: {str(e)}")
+                            else:
+                                final_question = question_content
+                            
+                            if final_question and isinstance(final_question, str):
+                                followup_questions.append({
+                                    'question': final_question.strip(),
+                                    'type': 'ai_personalized',
+                                    'intent': f'AI 기반 심화 질문 {i+1}',
+                                    'difficulty': 'intermediate',
+                                    'personalized': True
+                                })
+                                print(f"Successfully generated question {i+1}: {final_question[:50]}...")
+                            else:
+                                raise Exception(f"AI 서버가 {i+1}번째 질문에서 유효하지 않은 응답을 반환했습니다.")
+                        else:
+                            raise Exception(f"AI 서버가 {i+1}번째 요청에서 예상하지 못한 응답 구조를 반환했습니다: {result}")
+                    else:
+                        raise Exception(f"AI 서버 오류 (질문 {i+1}, 상태코드: {response.status_code})")
             
-            return followup_questions
-            
+            if len(followup_questions) == count:
+                print(f"Successfully generated all {count} AI-based follow-up questions")
+                return followup_questions
+            else:
+                raise Exception(f"요청한 {count}개 질문 중 {len(followup_questions)}개만 생성되었습니다.")
+                    
+        except httpx.TimeoutException:
+            print("AI server timeout for follow-up questions")
+            raise Exception("꼬리 질문 생성 중 AI 서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.")
+        except httpx.ConnectError:
+            print("AI server connection failed for follow-up questions")
+            raise Exception("꼬리 질문 생성을 위한 AI 서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.")
         except Exception as e:
-            print(f"Follow-up question generation error: {str(e)}")
-            return self._get_default_followup_questions(count)
+            print(f"Personalized follow-up question generation error: {str(e)}")
+            # Fallback 시스템 완전 제거 - AI 실패 시 명확한 오류 메시지
+            raise Exception(f"개인화된 꼬리 질문 생성에 실패했습니다: {str(e)}. AI 서버 상태를 확인하고 다시 시도해주세요.")
     
     async def generate_final_report(self, session_id: str, answers: List, main_questions: List) -> dict:
         """최종 면접 결과 리포트 생성"""
@@ -559,55 +613,140 @@ class FeedbackService:
         pass
     
     async def analyze_answer(self, question: str, answer: str, user_level: str = "intermediate") -> dict:
-        """답변을 분석하여 피드백 생성"""
+        """AI 기반 상세 피드백 생성"""
         try:
-            print(f"Analyzing answer for question length: {len(question)}, answer length: {len(answer)}")
+            print(f"Generating comprehensive feedback for question length: {len(question)}, answer length: {len(answer)}")
             
-            # AI 서버 통신 시도
-            try:
-                async with httpx.AsyncClient(timeout=60) as client:
-                    headers = {'Content-Type': 'application/json'}
-                    payload = {
-                        'html_content': f'Question: {question[:500]}\n\nAnswer: {answer[:1000]}',
-                        'question': question[:500],
-                        'answer': answer[:1000],
-                        'user_level': user_level
-                    }
-                    
-                    response = await client.post(
-                        "https://ai-f.kms39273.synology.me/api/v1/questions/evaluate",
-                        headers=headers,
-                        json=payload
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result and isinstance(result, dict):
-                            print("AI server provided feedback")
-                            return result
-                        else:
-                            print("AI server returned invalid feedback")
-                            raise Exception("AI 서버에서 유효하지 않은 피드백을 반환했습니다. 잠시 후 다시 시도해주세요.")
-                    else:
-                        print(f"AI server error: {response.status_code}")
-                        raise Exception(f"AI 서버 오류가 발생했습니다 (상태코드: {response.status_code}). 잠시 후 다시 시도해주세요.")
-                        
-            except httpx.TimeoutException:
-                print("AI server timeout")
-                raise Exception("AI 서버 응답 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
-            except httpx.ConnectError:
-                print("AI server connection failed")
-                raise Exception("AI 서버에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도해주세요.")
-            except Exception as ai_error:
-                print(f"AI server communication failed: {str(ai_error)}")
-                raise Exception(f"AI 서버 통신 중 오류가 발생했습니다: {str(ai_error)}. 잠시 후 다시 시도해주세요.")
+            # AI 서버를 통한 종합 피드백 생성
+            async with httpx.AsyncClient(timeout=60) as client:
+                headers = {'Content-Type': 'application/json'}
+                payload = {
+                    'html_content': f'Question: {question[:500]}\n\nAnswer: {answer[:1000]}',
+                    'question': question[:500],
+                    'answer': answer[:1000],
+                    'user_level': user_level
+                }
                 
+                response = await client.post(
+                    "https://ai-f.kms39273.synology.me/api/v1/questions/evaluate",
+                    headers=headers,
+                    json=payload
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result and isinstance(result, dict):
+                        # AI 피드백을 시스템 형식으로 변환
+                        formatted_feedback = self._format_comprehensive_feedback(result)
+                        print("AI server provided comprehensive feedback")
+                        return formatted_feedback
+                    else:
+                        print("AI server returned invalid feedback structure")
+                        raise Exception("AI 서버에서 유효한 피드백 구조를 반환하지 못했습니다.")
+                else:
+                    print(f"AI feedback server error: {response.status_code}")
+                    raise Exception(f"피드백 생성 중 AI 서버 오류 (상태코드: {response.status_code})")
+                    
+        except httpx.TimeoutException:
+            print("AI server timeout for feedback")
+            raise Exception("피드백 생성 중 AI 서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.")
+        except httpx.ConnectError:
+            print("AI server connection failed for feedback")
+            raise Exception("피드백 생성을 위한 AI 서버 연결에 실패했습니다. 네트워크 상태를 확인해주세요.")
         except Exception as e:
-            print(f"Answer evaluation error: {str(e)}")
-            if "AI 서버" in str(e):
-                raise e
-            else:
-                raise Exception(f"답변 평가 중 오류가 발생했습니다: {str(e)}. 잠시 후 다시 시도해주세요.")
+            print(f"Comprehensive feedback generation error: {str(e)}")
+            # Fallback 제거 - AI 실패 시 명확한 오류 메시지
+            raise Exception(f"AI 기반 피드백 생성에 실패했습니다: {str(e)}. AI 서버 상태를 확인하고 다시 시도해주세요.")
+    
+    def _format_comprehensive_feedback(self, ai_feedback: dict) -> dict:
+        """AI 피드백을 시스템 형식으로 변환"""
+        try:
+            print(f"Formatting AI feedback: {ai_feedback}")  # 디버깅용 로그
+            
+            # 다양한 AI 응답 구조에 대응
+            overall_score = 75
+            strengths = ["AI 분석 기반 답변"]
+            improvements = ["답변을 더 구체적으로 설명해주세요"]
+            technical_score = 75
+            technical_status = "보통"
+            technical_details = "AI 분석 완료"
+            communication_score = 75
+            personalized_advice = "계속해서 경험 기반으로 답변해주세요."
+            
+            # 점수 추출
+            if 'overall_score' in ai_feedback:
+                overall_score = ai_feedback['overall_score']
+            elif 'score' in ai_feedback:
+                overall_score = ai_feedback['score']
+            
+            # 강점 추출
+            if 'strengths' in ai_feedback:
+                if isinstance(ai_feedback['strengths'], list):
+                    strengths = ai_feedback['strengths']
+                elif isinstance(ai_feedback['strengths'], str):
+                    strengths = [ai_feedback['strengths']]
+            elif 'overview' in ai_feedback and 'strengths' in ai_feedback['overview']:
+                strengths = ai_feedback['overview']['strengths']
+            
+            # 개선사항 추출
+            if 'improvement_suggestions' in ai_feedback:
+                if isinstance(ai_feedback['improvement_suggestions'], list):
+                    improvements = ai_feedback['improvement_suggestions']
+                elif isinstance(ai_feedback['improvement_suggestions'], str):
+                    improvements = [ai_feedback['improvement_suggestions']]
+            elif 'improvements' in ai_feedback:
+                if isinstance(ai_feedback['improvements'], list):
+                    improvements = ai_feedback['improvements']
+                elif isinstance(ai_feedback['improvements'], str):
+                    improvements = [ai_feedback['improvements']]
+            elif 'overview' in ai_feedback and 'improvements' in ai_feedback['overview']:
+                improvements = ai_feedback['overview']['improvements']
+            
+            # 기술적 정확성 추출
+            if 'technical_accuracy' in ai_feedback:
+                tech_data = ai_feedback['technical_accuracy']
+                if isinstance(tech_data, dict):
+                    technical_score = tech_data.get('score', 75)
+                    technical_status = tech_data.get('status', '보통')
+                    technical_details = tech_data.get('details', 'AI 분석 완료')
+                elif isinstance(tech_data, (int, float)):
+                    technical_score = tech_data
+            
+            # 소통 점수 추출
+            if 'communication_score' in ai_feedback:
+                communication_score = ai_feedback['communication_score']
+            
+            # 개인화 조언 추출
+            if 'personalized_advice' in ai_feedback:
+                personalized_advice = ai_feedback['personalized_advice']
+            elif 'advice' in ai_feedback:
+                personalized_advice = ai_feedback['advice']
+            
+            return {
+                "overall_score": int(overall_score) if isinstance(overall_score, (int, float)) else 75,
+                "strengths": strengths if strengths else ["AI 분석 기반 답변"],
+                "improvement_suggestions": improvements if improvements else ["답변을 더 구체적으로 설명해주세요"],
+                "technical_accuracy": {
+                    "score": int(technical_score) if isinstance(technical_score, (int, float)) else 75,
+                    "status": technical_status,
+                    "details": technical_details
+                },
+                "communication_score": int(communication_score) if isinstance(communication_score, (int, float)) else 75,
+                "personalized_advice": personalized_advice,
+                "ai_generated": True
+            }
+        except Exception as e:
+            print(f"Feedback formatting error: {str(e)}")
+            # 최소한의 구조 반환
+            return {
+                "overall_score": 70,
+                "strengths": ["경험 기반 답변"],
+                "improvement_suggestions": ["더 구체적인 설명이 필요합니다"],
+                "technical_accuracy": {"score": 70, "status": "보통", "details": "기본 분석"},
+                "communication_score": 70,
+                "personalized_advice": "답변을 더 발전시켜보세요.",
+                "ai_generated": True
+            }
     
 
     
@@ -702,23 +841,12 @@ class FeedbackService:
             
         except Exception as e:
             print(f"Structured answer evaluation error: {str(e)}")
-            return self._get_default_feedback()
-    
-    def _get_default_feedback(self) -> dict:
-        """기본 피드백 반환 (fallback)"""
-        return {
-            "overall_score": 70,
-            "star_analysis": {
-                "situation": {"present": True, "quality": "good", "suggestion": "더 구체적인 상황 설명"},
-                "task": {"present": True, "quality": "good", "suggestion": None},
-                "action": {"present": True, "quality": "good", "suggestion": None},
-                "result": {"present": False, "quality": None, "suggestion": "정량적 결과 지표 추가"}
-            },
-            "technical_accuracy": {"score": 75, "correct_concepts": [], "missing_details": []},
-            "improvement_suggestions": ["더 구체적인 예시 추가"],
-            "strengths": ["경험 기반 답변"],
-            "next_steps": ["실무 경험 보강"]
-        }
+            # Fallback 제거 - AI 기반 평가로 전환 시도
+            try:
+                return await self.analyze_answer(question, answer, 'intermediate')
+            except Exception as ai_error:
+                print(f"AI evaluation also failed: {str(ai_error)}")
+                raise Exception(f"답변 평가 시스템이 일시적으로 사용할 수 없습니다: {str(e)}. 잠시 후 다시 시도해주세요.")
 
 
 class FollowUpService:
